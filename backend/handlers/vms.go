@@ -66,6 +66,21 @@ func RebootVM(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"upid": upid})
 }
 
+func DeleteVM(c *gin.Context) {
+	node := c.Param("node")
+	vmid, err := strconv.Atoi(c.Param("vmid"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid vmid"})
+		return
+	}
+	upid, err := PVE.DeleteVM(node, vmid)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"upid": upid})
+}
+
 func CloneVM(c *gin.Context) {
 	node := c.Param("node")
 	vmid, _ := strconv.Atoi(c.Param("vmid"))

@@ -26,6 +26,10 @@ func (c *Client) RebootContainer(node string, vmid int) (string, error) {
 	return c.post(fmt.Sprintf("nodes/%s/lxc/%d/status/reboot", node, vmid), nil)
 }
 
+func (c *Client) DeleteContainer(node string, vmid int) (string, error) {
+	return c.delete(fmt.Sprintf("nodes/%s/lxc/%d", node, vmid))
+}
+
 func (c *Client) CloneContainer(node string, vmid int, newID int, hostname, target string, full bool) (string, error) {
 	params := map[string]string{
 		"newid": fmt.Sprintf("%d", newID),

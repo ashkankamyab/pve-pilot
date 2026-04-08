@@ -53,6 +53,7 @@ func main() {
 		api.POST("/nodes/:node/vms/:vmid/stop", handlers.StopVM)
 		api.POST("/nodes/:node/vms/:vmid/reboot", handlers.RebootVM)
 		api.POST("/nodes/:node/vms/:vmid/clone", handlers.CloneVM)
+		api.DELETE("/nodes/:node/vms/:vmid", handlers.DeleteVM)
 
 		api.GET("/nodes/:node/containers", handlers.ListContainers)
 		api.GET("/nodes/:node/containers/:vmid/status", handlers.GetContainerStatus)
@@ -60,6 +61,7 @@ func main() {
 		api.POST("/nodes/:node/containers/:vmid/stop", handlers.StopContainer)
 		api.POST("/nodes/:node/containers/:vmid/reboot", handlers.RebootContainer)
 		api.POST("/nodes/:node/containers/:vmid/clone", handlers.CloneContainer)
+		api.DELETE("/nodes/:node/containers/:vmid", handlers.DeleteContainer)
 
 		api.GET("/templates", handlers.ListTemplates)
 	}

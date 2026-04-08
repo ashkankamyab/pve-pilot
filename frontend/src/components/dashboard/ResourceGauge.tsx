@@ -20,7 +20,7 @@ export default function ResourceGauge({
 
   return (
     <div className="flex flex-col items-center gap-1">
-      <svg width={size} height={size} className="-rotate-90">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -28,6 +28,7 @@ export default function ResourceGauge({
           fill="none"
           stroke="#222222"
           strokeWidth={strokeWidth}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
         />
         <circle
           cx={size / 2}
@@ -39,12 +40,22 @@ export default function ResourceGauge({
           strokeDasharray={circumference}
           strokeDashoffset={offset}
           strokeLinecap="round"
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
           className="transition-all duration-500"
         />
+        <text
+          x="50%"
+          y="50%"
+          dominantBaseline="central"
+          textAnchor="middle"
+          fill="#e0e0e0"
+          fontSize={size * 0.22}
+          fontWeight="bold"
+          fontFamily="system-ui, sans-serif"
+        >
+          {value}%
+        </text>
       </svg>
-      <div className="-mt-[calc(50%+10px)] flex flex-col items-center justify-center" style={{ marginTop: `-${size / 2 + 10}px`, height: `${size}px` }}>
-        <span className="text-lg font-bold text-[#e0e0e0]">{value}%</span>
-      </div>
       <span className="text-xs text-[#888888]">{label}</span>
     </div>
   );

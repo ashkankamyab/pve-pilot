@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { usePolling } from "@/hooks/usePolling";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, formatBytes } from "@/lib/api";
 import { TemplateInfo, ClusterResource } from "@/lib/types";
 import CloneModal from "@/components/templates/CloneModal";
 import { Copy } from "lucide-react";
@@ -46,10 +46,13 @@ export default function TemplatesPage() {
         <table className="w-full text-left text-sm">
           <thead className="border-b border-[#222222] bg-[#111111]">
             <tr>
-              <th className="px-4 py-3 font-medium text-[#888888]">VMID</th>
+              <th className="w-24 px-4 py-3 font-medium text-[#888888]">VMID</th>
               <th className="px-4 py-3 font-medium text-[#888888]">Name</th>
-              <th className="px-4 py-3 font-medium text-[#888888]">Node</th>
-              <th className="px-4 py-3 font-medium text-[#888888]">Actions</th>
+              <th className="w-32 px-4 py-3 font-medium text-[#888888]">Node</th>
+              <th className="w-28 px-4 py-3 font-medium text-[#888888]">CPUs</th>
+              <th className="w-28 px-4 py-3 font-medium text-[#888888]">Memory</th>
+              <th className="w-28 px-4 py-3 font-medium text-[#888888]">Disk</th>
+              <th className="w-28 px-4 py-3 text-right font-medium text-[#888888]">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#222222]">
@@ -65,7 +68,16 @@ export default function TemplatesPage() {
                   {t.name || "-"}
                 </td>
                 <td className="px-4 py-3 text-[#888888]">{t.node}</td>
-                <td className="px-4 py-3">
+                <td className="px-4 py-3 text-[#e0e0e0]">
+                  {t.maxcpu ?? "-"}
+                </td>
+                <td className="px-4 py-3 text-[#e0e0e0]">
+                  {t.maxmem ? formatBytes(t.maxmem) : "-"}
+                </td>
+                <td className="px-4 py-3 text-[#e0e0e0]">
+                  {t.maxdisk ? formatBytes(t.maxdisk) : "-"}
+                </td>
+                <td className="px-4 py-3 text-right">
                   <button
                     onClick={() => setSelectedTemplate(t)}
                     className="inline-flex items-center gap-1.5 rounded-md border border-[#222222] px-3 py-1.5 text-xs text-[#e0e0e0] transition-colors hover:border-[#00ff88] hover:text-[#00ff88]"
@@ -79,7 +91,7 @@ export default function TemplatesPage() {
             {items.length === 0 && (
               <tr>
                 <td
-                  colSpan={4}
+                  colSpan={7}
                   className="px-4 py-8 text-center text-[#888888]"
                 >
                   No templates found.

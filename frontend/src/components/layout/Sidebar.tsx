@@ -30,7 +30,7 @@ export default function Sidebar() {
         <span className="text-lg font-semibold text-[#e0e0e0]">PVE Pilot</span>
       </div>
 
-      <nav className="mt-2 flex flex-1 flex-col gap-1 px-3">
+      <nav className="mt-4 flex flex-1 flex-col gap-0.5 px-3">
         {navItems.map(({ href, label, icon: Icon }) => {
           const isActive =
             href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -38,13 +38,16 @@ export default function Sidebar() {
             <Link
               key={href}
               href={href}
-              className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+              className={`relative flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors ${
                 isActive
-                  ? "bg-[#00ff88]/15 text-[#00ff88]"
+                  ? "bg-[#00ff88]/10 text-[#00ff88]"
                   : "text-[#888888] hover:bg-[#1a1a1a] hover:text-[#e0e0e0]"
               }`}
             >
-              <Icon size={18} />
+              {isActive && (
+                <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r bg-[#00ff88]" />
+              )}
+              <Icon size={18} strokeWidth={isActive ? 2.2 : 1.8} />
               {label}
             </Link>
           );

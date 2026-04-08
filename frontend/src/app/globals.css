@@ -32,17 +32,17 @@ body {
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--pve-bg);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
   background: var(--pve-border);
-  border-radius: 4px;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -52,5 +52,32 @@ body {
 /* Firefox scrollbar */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--pve-border) var(--pve-bg);
+  scrollbar-color: var(--pve-border) transparent;
+}
+
+/* Input focus and hover styles */
+input,
+select,
+textarea {
+  transition: border-color 0.15s ease;
+}
+
+input:hover:not(:disabled):not(:focus),
+select:hover:not(:disabled):not(:focus),
+textarea:hover:not(:disabled):not(:focus) {
+  border-color: #333333;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--pve-accent);
+  outline: none;
+  box-shadow: 0 0 0 1px rgba(0, 255, 136, 0.15);
+}
+
+/* Selection */
+::selection {
+  background: rgba(0, 255, 136, 0.2);
+  color: var(--pve-text);
 }

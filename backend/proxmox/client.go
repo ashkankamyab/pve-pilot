@@ -157,6 +157,38 @@ func (c *Client) postForm(path string, params map[string]string) (string, error)
 	return string(respBody), nil
 }
 
+func (c *Client) delete(path string) (string, error) {
+	url := fmt.Sprintf("%s/api2/json/%s", c.baseURL, strings.TrimLeft(path, "/"))
+
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return "", fmt.Errorf("creating request: %w", err)
+	}
+
+	c.setAuth(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("executing request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("API error %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var taskResp struct {
+		Data string `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &taskResp); err == nil && taskResp.Data != "" {
+		return taskResp.Data, nil
+	}
+
+	return string(respBody), nil
+}
+
 func (c *Client) setAuth(req *http.Request) {
 	req.Header.Set("Authorization", fmt.Sprintf("PVEAPIToken=%s=%s", c.tokenID, c.tokenSecret))
 }

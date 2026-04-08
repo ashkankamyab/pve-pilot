@@ -13,10 +13,12 @@ interface StatCardProps {
 
 function StatCard({ label, value, sub }: StatCardProps) {
   return (
-    <div className="rounded-lg border border-[#222222] bg-[#161616] p-4">
-      <p className="text-xs text-[#888888]">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-[#e0e0e0]">{value}</p>
-      {sub && <p className="mt-0.5 text-xs text-[#888888]">{sub}</p>}
+    <div className="rounded-lg border border-[#222222] bg-[#161616] px-5 py-4">
+      <p className="text-xs font-medium uppercase tracking-wider text-[#888888]">
+        {label}
+      </p>
+      <p className="mt-2 text-3xl font-bold text-[#e0e0e0]">{value}</p>
+      {sub && <p className="mt-1 text-sm text-[#888888]">{sub}</p>}
     </div>
   );
 }

@@ -2,10 +2,13 @@
 
 import { useState, useCallback } from "react";
 import { usePolling } from "@/hooks/usePolling";
-import { apiFetch, apiPost, cpuPercent, formatBytes, formatUptime } from "@/lib/api";
-import { ClusterResource, ContainerStatus } from "@/lib/types";
+import { apiFetch, apiPost, apiDelete, cpuPercent, formatBytes, formatUptime } from "@/lib/api";
+import { ClusterResource, ContainerStatus, TemplateInfo } from "@/lib/types";
 import StatusBadge from "@/components/shared/StatusBadge";
 import PowerButtons from "@/components/shared/PowerButtons";
+import ConfirmDialog from "@/components/shared/ConfirmDialog";
+import CreateFromTemplateModal from "@/components/templates/CreateFromTemplateModal";
+import { Plus, Trash2 } from "lucide-react";
 
 interface ContainerWithNode extends ContainerStatus {
   node: string;
@@ -14,6 +17,8 @@ interface ContainerWithNode extends ContainerStatus {
 export default function ContainersPage() {
   const [search, setSearch] = useState("");
   const [actionLoading, setActionLoading] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ContainerWithNode | null>(null);
+  const [showCreateFromTemplate, setShowCreateFromTemplate] = useState(false);
 
   const fetchContainers = useCallback(async () => {
     const resources = await apiFetch<ClusterResource[]>("/cluster/resources");
@@ -39,10 +44,23 @@ export default function ContainersPage() {
     return results.flat();
   }, []);
 
+  const fetchNodes = useCallback(async () => {
+    const resources = await apiFetch<ClusterResource[]>("/cluster/resources");
+    return [
+      ...new Set(resources.filter((r) => r.type === "node").map((r) => r.node)),
+    ];
+  }, []);
+
+  const fetchTemplates = useCallback(async () => {
+    return apiFetch<TemplateInfo[]>("/templates");
+  }, []);
+
   const { data: containers, isLoading, refresh } = usePolling(
     fetchContainers,
     5000
   );
+  const { data: nodes } = usePolling(fetchNodes, 30000);
+  const { data: templates } = usePolling(fetchTemplates, 30000);
 
   const handleAction = async (
     node: string,
@@ -55,6 +73,18 @@ export default function ContainersPage() {
       setTimeout(refresh, 1500);
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setActionLoading(deleteTarget.vmid);
+    try {
+      await apiDelete(`/nodes/${deleteTarget.node}/containers/${deleteTarget.vmid}`);
+      setTimeout(refresh, 2000);
+    } finally {
+      setActionLoading(null);
+      setDeleteTarget(null);
     }
   };
 
@@ -74,13 +104,22 @@ export default function ContainersPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <input
-        type="text"
-        placeholder="Search containers..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="w-full max-w-sm rounded-md border border-[#222222] bg-[#161616] px-3 py-2 text-sm text-[#e0e0e0] outline-none placeholder:text-[#888888] focus:border-[#00ff88]"
-      />
+      <div className="flex items-center gap-3">
+        <input
+          type="text"
+          placeholder="Search containers..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full max-w-sm rounded-md border border-[#222222] bg-[#161616] px-3 py-2 text-sm text-[#e0e0e0] outline-none placeholder:text-[#888888] focus:border-[#00ff88]"
+        />
+        <button
+          onClick={() => setShowCreateFromTemplate(true)}
+          className="inline-flex items-center gap-2 whitespace-nowrap rounded-md bg-[#00ff88] px-4 py-2 text-sm font-medium text-[#0a0a0a] transition-colors hover:bg-[#00cc6a]"
+        >
+          <Plus size={16} />
+          Create from Template
+        </button>
+      </div>
 
       <div className="overflow-x-auto rounded-lg border border-[#222222]">
         <table className="w-full text-left text-sm">
@@ -120,13 +159,23 @@ export default function ContainersPage() {
                   {ct.uptime > 0 ? formatUptime(ct.uptime) : "-"}
                 </td>
                 <td className="px-4 py-3">
-                  <PowerButtons
-                    status={ct.status}
-                    onStart={() => handleAction(ct.node, ct.vmid, "start")}
-                    onStop={() => handleAction(ct.node, ct.vmid, "stop")}
-                    onReboot={() => handleAction(ct.node, ct.vmid, "reboot")}
-                    isLoading={actionLoading === ct.vmid}
-                  />
+                  <div className="flex items-center gap-1">
+                    <PowerButtons
+                      status={ct.status}
+                      onStart={() => handleAction(ct.node, ct.vmid, "start")}
+                      onStop={() => handleAction(ct.node, ct.vmid, "stop")}
+                      onReboot={() => handleAction(ct.node, ct.vmid, "reboot")}
+                      isLoading={actionLoading === ct.vmid}
+                    />
+                    <button
+                      onClick={() => setDeleteTarget(ct)}
+                      disabled={ct.status === "running" || actionLoading === ct.vmid}
+                      title="Delete Container"
+                      className="rounded p-1.5 text-[#888888] transition-colors hover:bg-[#222222] hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-30"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -143,6 +192,25 @@ export default function ContainersPage() {
           </tbody>
         </table>
       </div>
+
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="Delete Container"
+        message={`Are you sure you want to permanently delete container ${deleteTarget?.vmid} (${deleteTarget?.name})? This action cannot be undone.`}
+      />
+
+      <CreateFromTemplateModal
+        isOpen={showCreateFromTemplate}
+        onClose={() => setShowCreateFromTemplate(false)}
+        templates={(templates ?? []).filter((t) => t.vmtype === "lxc")}
+        nodes={nodes ?? []}
+        onSuccess={() => {
+          setShowCreateFromTemplate(false);
+          setTimeout(refresh, 2000);
+        }}
+      />
     </div>
   );
 }

@@ -26,6 +26,10 @@ func (c *Client) RebootVM(node string, vmid int) (string, error) {
 	return c.post(fmt.Sprintf("nodes/%s/qemu/%d/status/reboot", node, vmid), nil)
 }
 
+func (c *Client) DeleteVM(node string, vmid int) (string, error) {
+	return c.delete(fmt.Sprintf("nodes/%s/qemu/%d", node, vmid))
+}
+
 func (c *Client) CloneVM(node string, vmid int, newID int, name, target string, full bool) (string, error) {
 	params := map[string]string{
 		"newid": fmt.Sprintf("%d", newID),

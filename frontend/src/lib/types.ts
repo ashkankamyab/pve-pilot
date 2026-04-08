@@ -17,6 +17,7 @@ export interface ClusterResource {
   storage?: string;
   content?: string;
   plugintype?: string;
+  ip?: string;
 }
 
 export interface ClusterSummary {
@@ -91,4 +92,22 @@ export interface CloneRequest {
   name: string;
   target?: string;
   full?: boolean;
+}
+
+export interface CreateVMRequest {
+  vmid: number;
+  name: string;
+  node: string;
+  ostype: string;
+  cores: number;
+  memory: number;
+  diskSize: number;
+  storage: string;
+  iso?: string;
+}
+
+export interface DeleteRequest {
+  node: string;
+  vmid: number;
+  type: "qemu" | "lxc";
 }
