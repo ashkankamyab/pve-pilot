@@ -147,3 +147,28 @@ type TemplateInfo struct {
 	ClusterResource
 	VMType string `json:"vmtype"` // "qemu" or "lxc"
 }
+
+// ProvisionRequest extends CloneRequest with cloud-init and disk options
+type ProvisionRequest struct {
+	NewID    int    `json:"newid" binding:"required"`
+	Name     string `json:"name" binding:"required"`
+	Target   string `json:"target,omitempty"`
+	Full     *bool  `json:"full,omitempty"`
+	Password string `json:"password,omitempty"`
+	SSHKeys  string `json:"sshkeys,omitempty"`
+	DiskSize int    `json:"disk_size,omitempty"` // in GB
+}
+
+// NetworkInterface represents a network interface from qemu-guest-agent
+type NetworkInterface struct {
+	Name        string      `json:"name"`
+	HWAddr      string      `json:"hardware-address"`
+	IPAddresses []IPAddress `json:"ip-addresses"`
+}
+
+// IPAddress represents an IP address on an interface
+type IPAddress struct {
+	Type    string `json:"ip-address-type"`
+	Address string `json:"ip-address"`
+	Prefix  int    `json:"prefix"`
+}

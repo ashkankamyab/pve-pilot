@@ -1,6 +1,9 @@
 package proxmox
 
-import "fmt"
+import (
+	"fmt"
+	"net/url"
+)
 
 func (c *Client) ListVMs(node string) ([]VMStatus, error) {
 	var vms []VMStatus
@@ -44,4 +47,42 @@ func (c *Client) CloneVM(node string, vmid int, newID int, name, target string, 
 		params["full"] = "1"
 	}
 	return c.postForm(fmt.Sprintf("nodes/%s/qemu/%d/clone", node, vmid), params)
+}
+
+// ConfigureCloudInit sets cloud-init password and SSH keys on a VM
+func (c *Client) ConfigureCloudInit(node string, vmid int, password, sshkeys string) error {
+	params := map[string]string{}
+	if password != "" {
+		params["cipassword"] = password
+	}
+	if sshkeys != "" {
+		params["sshkeys"] = url.QueryEscape(sshkeys)
+	}
+	if len(params) == 0 {
+		return nil
+	}
+	_, err := c.postForm(fmt.Sprintf("nodes/%s/qemu/%d/config", node, vmid), params)
+	return err
+}
+
+// ResizeDisk resizes a disk on a VM
+func (c *Client) ResizeDisk(node string, vmid int, disk string, size string) error {
+	params := map[string]string{
+		"disk": disk,
+		"size": size,
+	}
+	_, err := c.putForm(fmt.Sprintf("nodes/%s/qemu/%d/resize", node, vmid), params)
+	return err
+}
+
+// GetVMInterfaces retrieves network interfaces from the QEMU guest agent
+func (c *Client) GetVMInterfaces(node string, vmid int) ([]NetworkInterface, error) {
+	var result struct {
+		Result []NetworkInterface `json:"result"`
+	}
+	err := c.get(fmt.Sprintf("nodes/%s/qemu/%d/agent/network-get-interfaces", node, vmid), &result)
+	if err != nil {
+		return nil, err
+	}
+	return result.Result, nil
 }

@@ -157,6 +157,44 @@ func (c *Client) postForm(path string, params map[string]string) (string, error)
 	return string(respBody), nil
 }
 
+func (c *Client) putForm(path string, params map[string]string) (string, error) {
+	url := fmt.Sprintf("%s/api2/json/%s", c.baseURL, strings.TrimLeft(path, "/"))
+
+	form := make([]string, 0, len(params))
+	for k, v := range params {
+		form = append(form, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	req, err := http.NewRequest("PUT", url, strings.NewReader(strings.Join(form, "&")))
+	if err != nil {
+		return "", fmt.Errorf("creating request: %w", err)
+	}
+
+	c.setAuth(req)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("executing request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("API error %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var taskResp struct {
+		Data string `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &taskResp); err == nil && taskResp.Data != "" {
+		return taskResp.Data, nil
+	}
+
+	return string(respBody), nil
+}
+
 func (c *Client) delete(path string) (string, error) {
 	url := fmt.Sprintf("%s/api2/json/%s", c.baseURL, strings.TrimLeft(path, "/"))
 

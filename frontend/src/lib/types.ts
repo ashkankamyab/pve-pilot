@@ -111,3 +111,25 @@ export interface DeleteRequest {
   vmid: number;
   type: "qemu" | "lxc";
 }
+
+export interface ProvisionRequest {
+  newid: number;
+  name: string;
+  target?: string;
+  full?: boolean;
+  password?: string;
+  sshkeys?: string;
+  disk_size?: number;
+}
+
+export interface IPAddress {
+  "ip-address-type": string;
+  "ip-address": string;
+  prefix: number;
+}
+
+export interface NetworkInterface {
+  name: string;
+  "hardware-address": string;
+  "ip-addresses": IPAddress[];
+}
