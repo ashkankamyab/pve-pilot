@@ -1,0 +1,35 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: pve-pilot-api
+    ports:
+      - "8080:8080"
+    environment:
+      - PROXMOX_URL=${PROXMOX_URL}
+      - PROXMOX_TOKEN_ID=${PROXMOX_TOKEN_ID}
+      - PROXMOX_TOKEN_SECRET=${PROXMOX_TOKEN_SECRET}
+      - INSECURE_TLS=${INSECURE_TLS:-true}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - PORT=8080
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+    container_name: pve-pilot-web
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped

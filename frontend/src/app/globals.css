@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+:root {
+  --pve-bg: #0a0a0a;
+  --pve-accent: #00ff88;
+  --pve-card: #161616;
+  --pve-border: #222222;
+  --pve-text: #e0e0e0;
+  --pve-text-secondary: #888888;
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
+}
+
+@theme inline {
+  --color-background: var(--pve-bg);
+  --color-foreground: var(--pve-text);
+  --color-accent: var(--pve-accent);
+  --color-card: var(--pve-card);
+  --color-card-border: var(--pve-border);
+  --color-muted: var(--pve-text-secondary);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
+}
+
+body {
+  background: var(--pve-bg);
+  color: var(--pve-text);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--pve-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--pve-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--pve-text-secondary);
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--pve-border) var(--pve-bg);
+}
