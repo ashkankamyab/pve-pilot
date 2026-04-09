@@ -1,4 +1,18 @@
 services:
+  nats:
+    image: nats:2-alpine
+    container_name: pve-pilot-nats
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: ["--js", "--http_port", "8222"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
   backend:
     build:
       context: ./backend
@@ -11,7 +25,12 @@ services:
       - PROXMOX_TOKEN_SECRET=${PROXMOX_TOKEN_SECRET}
       - INSECURE_TLS=${INSECURE_TLS:-true}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - NATS_URL=nats://nats:4222
+      - DNS_DOMAIN=${DNS_DOMAIN:-}
       - PORT=8080
+    depends_on:
+      nats:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]

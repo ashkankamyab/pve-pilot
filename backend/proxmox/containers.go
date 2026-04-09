@@ -1,6 +1,10 @@
 package proxmox
 
-import "fmt"
+import (
+	"fmt"
+	"net/url"
+	"strings"
+)
 
 func (c *Client) ListContainers(node string) ([]ContainerStatus, error) {
 	var containers []ContainerStatus
@@ -30,7 +34,7 @@ func (c *Client) DeleteContainer(node string, vmid int) (string, error) {
 	return c.delete(fmt.Sprintf("nodes/%s/lxc/%d", node, vmid))
 }
 
-func (c *Client) CloneContainer(node string, vmid int, newID int, hostname, target string, full bool) (string, error) {
+func (c *Client) CloneContainer(node string, vmid int, newID int, hostname, target, storage string, full bool) (string, error) {
 	params := map[string]string{
 		"newid": fmt.Sprintf("%d", newID),
 	}
@@ -39,6 +43,9 @@ func (c *Client) CloneContainer(node string, vmid int, newID int, hostname, targ
 	}
 	if target != "" {
 		params["target"] = target
+	}
+	if storage != "" {
+		params["storage"] = storage
 	}
 	if full {
 		params["full"] = "1"
@@ -53,7 +60,10 @@ func (c *Client) ConfigureContainerCloudInit(node string, vmid int, password, ss
 		params["password"] = password
 	}
 	if sshkeys != "" {
-		params["ssh-public-keys"] = sshkeys
+		// LXC ssh-public-keys also needs URL-encoding like QEMU sshkeys
+		encoded := url.QueryEscape(sshkeys)
+		encoded = strings.ReplaceAll(encoded, "+", "%20")
+		params["ssh-public-keys"] = encoded
 	}
 	if len(params) == 0 {
 		return nil

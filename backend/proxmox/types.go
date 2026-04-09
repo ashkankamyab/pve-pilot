@@ -126,6 +126,16 @@ type TaskResponse struct {
 	UPID string `json:"data"`
 }
 
+// TaskStatus represents the status of a Proxmox async task
+type TaskStatus struct {
+	Status     string `json:"status"` // "running", "stopped"
+	ExitStatus string `json:"exitstatus,omitempty"` // "OK" on success, error message on failure
+	Type       string `json:"type"`
+	ID         string `json:"id"`
+	Node       string `json:"node"`
+	PID        int    `json:"pid"`
+}
+
 // ClusterSummary is an aggregated overview
 type ClusterSummary struct {
 	Nodes              int     `json:"nodes"`
@@ -148,15 +158,25 @@ type TemplateInfo struct {
 	VMType string `json:"vmtype"` // "qemu" or "lxc"
 }
 
+// ExtraVolume represents an additional disk to attach
+type ExtraVolume struct {
+	Storage string `json:"storage"`
+	SizeGB  int    `json:"size_gb"`
+}
+
 // ProvisionRequest extends CloneRequest with cloud-init and disk options
 type ProvisionRequest struct {
-	NewID    int    `json:"newid" binding:"required"`
-	Name     string `json:"name" binding:"required"`
-	Target   string `json:"target,omitempty"`
-	Full     *bool  `json:"full,omitempty"`
-	Password string `json:"password,omitempty"`
-	SSHKeys  string `json:"sshkeys,omitempty"`
-	DiskSize int    `json:"disk_size,omitempty"` // in GB
+	NewID        int           `json:"newid" binding:"required"`
+	Name         string        `json:"name" binding:"required"`
+	Target       string        `json:"target,omitempty"`
+	Storage      string        `json:"storage,omitempty"`
+	Full         *bool         `json:"full,omitempty"`
+	CIUser       string        `json:"ciuser,omitempty"`
+	Password     string        `json:"password,omitempty"`
+	SSHKeys      string        `json:"sshkeys,omitempty"`
+	DiskSize     int           `json:"disk_size,omitempty"` // in GB
+	ExtraVolumes []ExtraVolume `json:"extra_volumes,omitempty"`
+	UserData     string        `json:"user_data,omitempty"` // cloud-init user-data script
 }
 
 // NetworkInterface represents a network interface from qemu-guest-agent
@@ -171,4 +191,19 @@ type IPAddress struct {
 	Type    string `json:"ip-address-type"`
 	Address string `json:"ip-address"`
 	Prefix  int    `json:"prefix"`
+}
+
+// FilesystemInfo represents filesystem usage from the guest agent
+type FilesystemInfo struct {
+	Name       string              `json:"name"`
+	MountPoint string              `json:"mountpoint"`
+	Type       string              `json:"type"`
+	TotalBytes int64               `json:"total-bytes,omitempty"`
+	UsedBytes  int64               `json:"used-bytes,omitempty"`
+	Disk       []FilesystemDiskRef `json:"disk,omitempty"`
+}
+
+// FilesystemDiskRef references the backing device
+type FilesystemDiskRef struct {
+	Dev string `json:"dev,omitempty"`
 }

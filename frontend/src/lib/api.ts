@@ -36,6 +36,38 @@ export async function apiDelete<T>(path: string): Promise<T> {
   return res.json();
 }
 
+export function apiSSE<T>(path: string, onEvent: (data: T) => void): () => void {
+  let closed = false;
+  let es: EventSource | null = null;
+
+  function connect() {
+    if (closed) return;
+    es = new EventSource(`${API_BASE}/api${path}`);
+    es.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data) as T;
+        onEvent(data);
+      } catch {
+        // ignore parse errors
+      }
+    };
+    es.onerror = () => {
+      es?.close();
+      // Retry after 2s unless explicitly closed
+      if (!closed) {
+        setTimeout(connect, 2000);
+      }
+    };
+  }
+
+  connect();
+
+  return () => {
+    closed = true;
+    es?.close();
+  };
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
   const k = 1024;

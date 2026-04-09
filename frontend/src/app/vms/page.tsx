@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import Link from "next/link";
 import { usePolling } from "@/hooks/usePolling";
-import { apiFetch, apiPost, apiDelete, cpuPercent, formatBytes, formatUptime } from "@/lib/api";
+import { apiFetch, formatBytes } from "@/lib/api";
 import { ClusterResource, VMStatus, TemplateInfo } from "@/lib/types";
 import StatusBadge from "@/components/shared/StatusBadge";
-import PowerButtons from "@/components/shared/PowerButtons";
-import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import CreateFromTemplateModal from "@/components/templates/CreateFromTemplateModal";
-import { Plus, Trash2 } from "lucide-react";
+import DistroIcon from "@/components/shared/DistroIcon";
+import { Plus, Search } from "lucide-react";
 
 interface VMWithNode extends VMStatus {
   node: string;
@@ -16,8 +16,6 @@ interface VMWithNode extends VMStatus {
 
 export default function VMsPage() {
   const [search, setSearch] = useState("");
-  const [actionLoading, setActionLoading] = useState<number | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<VMWithNode | null>(null);
   const [showCreateFromTemplate, setShowCreateFromTemplate] = useState(false);
 
   const fetchVMs = useCallback(async () => {
@@ -57,32 +55,6 @@ export default function VMsPage() {
   const { data: nodes } = usePolling(fetchNodes, 30000);
   const { data: templates } = usePolling(fetchTemplates, 30000);
 
-  const handleAction = async (
-    node: string,
-    vmid: number,
-    action: string
-  ) => {
-    setActionLoading(vmid);
-    try {
-      await apiPost(`/nodes/${node}/vms/${vmid}/${action}`);
-      setTimeout(refresh, 1500);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    setActionLoading(deleteTarget.vmid);
-    try {
-      await apiDelete(`/nodes/${deleteTarget.node}/vms/${deleteTarget.vmid}`);
-      setTimeout(refresh, 2000);
-    } finally {
-      setActionLoading(null);
-      setDeleteTarget(null);
-    }
-  };
-
   const filtered = (vms ?? []).filter(
     (vm) =>
       vm.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -98,15 +70,18 @@ export default function VMsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
       <div className="flex items-center gap-3">
-        <input
-          type="text"
-          placeholder="Search VMs..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full max-w-sm rounded-md border border-[#222222] bg-[#161616] px-3 py-2 text-sm text-[#e0e0e0] outline-none placeholder:text-[#888888] focus:border-[#00ff88]"
-        />
+        <div className="relative flex-1 max-w-sm">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#555555]" />
+          <input
+            type="text"
+            placeholder="Search VMs..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full rounded-md border border-[#222222] bg-[#161616] pl-8 pr-3 py-2 text-sm text-[#e0e0e0] outline-none placeholder:text-[#555555] focus:border-[#00ff88]"
+          />
+        </div>
         <button
           onClick={() => setShowCreateFromTemplate(true)}
           className="inline-flex items-center gap-2 whitespace-nowrap rounded-md bg-[#00ff88] px-4 py-2 text-sm font-medium text-[#0a0a0a] transition-colors hover:bg-[#00cc6a]"
@@ -116,77 +91,17 @@ export default function VMsPage() {
         </button>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-[#222222]">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-[#222222] bg-[#111111]">
-            <tr>
-              <th className="px-4 py-3 font-medium text-[#888888]">VMID</th>
-              <th className="px-4 py-3 font-medium text-[#888888]">Name</th>
-              <th className="px-4 py-3 font-medium text-[#888888]">Node</th>
-              <th className="px-4 py-3 font-medium text-[#888888]">Status</th>
-              <th className="px-4 py-3 font-medium text-[#888888]">CPU %</th>
-              <th className="px-4 py-3 font-medium text-[#888888]">RAM</th>
-              <th className="px-4 py-3 font-medium text-[#888888]">Uptime</th>
-              <th className="px-4 py-3 font-medium text-[#888888]">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#222222]">
-            {filtered.map((vm) => (
-              <tr key={`${vm.node}-${vm.vmid}`} className="bg-[#161616] hover:bg-[#1a1a1a]">
-                <td className="px-4 py-3 font-mono text-[#e0e0e0]">{vm.vmid}</td>
-                <td className="px-4 py-3 text-[#e0e0e0]">{vm.name}</td>
-                <td className="px-4 py-3 text-[#888888]">{vm.node}</td>
-                <td className="px-4 py-3">
-                  <StatusBadge status={vm.status} />
-                </td>
-                <td className="px-4 py-3 text-[#e0e0e0]">
-                  {cpuPercent(vm.cpu)}%
-                </td>
-                <td className="px-4 py-3 text-[#e0e0e0]">
-                  {formatBytes(vm.mem)} / {formatBytes(vm.maxmem)}
-                </td>
-                <td className="px-4 py-3 text-[#888888]">
-                  {vm.uptime > 0 ? formatUptime(vm.uptime) : "-"}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-1">
-                    <PowerButtons
-                      status={vm.status}
-                      onStart={() => handleAction(vm.node, vm.vmid, "start")}
-                      onStop={() => handleAction(vm.node, vm.vmid, "stop")}
-                      onReboot={() => handleAction(vm.node, vm.vmid, "reboot")}
-                      isLoading={actionLoading === vm.vmid}
-                    />
-                    <button
-                      onClick={() => setDeleteTarget(vm)}
-                      disabled={vm.status === "running" || actionLoading === vm.vmid}
-                      title="Delete VM"
-                      className="rounded p-1.5 text-[#888888] transition-colors hover:bg-[#222222] hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-30"
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-[#888888]">
-                  No virtual machines found.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <ConfirmDialog
-        isOpen={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={handleDelete}
-        title="Delete VM"
-        message={`Are you sure you want to permanently delete VM ${deleteTarget?.vmid} (${deleteTarget?.name})? This action cannot be undone.`}
-      />
+      {filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-[#888888]">
+          <p className="text-sm">No virtual machines found.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {filtered.map((vm) => (
+            <VMCard key={`${vm.node}-${vm.vmid}`} vm={vm} />
+          ))}
+        </div>
+      )}
 
       <CreateFromTemplateModal
         isOpen={showCreateFromTemplate}
@@ -194,10 +109,73 @@ export default function VMsPage() {
         templates={(templates ?? []).filter((t) => t.vmtype === "qemu")}
         nodes={nodes ?? []}
         onSuccess={() => {
-          setShowCreateFromTemplate(false);
           setTimeout(refresh, 2000);
         }}
       />
     </div>
+  );
+}
+
+function VMCard({ vm }: { vm: VMWithNode }) {
+  const isRunning = vm.status === "running";
+  const memPercent = vm.maxmem > 0 ? Math.round((vm.mem / vm.maxmem) * 100) : 0;
+  const cpuPercent = Math.round(vm.cpu * 100);
+
+  return (
+    <Link
+      href={`/vms/${vm.node}/${vm.vmid}`}
+      className="group flex flex-col rounded-lg border border-[#222222] bg-[#161616] p-4 transition-all hover:border-[#333333] hover:bg-[#1a1a1a]"
+    >
+      {/* Header */}
+      <div className="flex items-start gap-3">
+        <DistroIcon name={vm.name} size={32} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <h3 className="truncate text-sm font-medium text-[#e0e0e0] group-hover:text-[#00ff88] transition-colors">
+              {vm.name}
+            </h3>
+          </div>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="text-xs text-[#555555] font-mono">ID {vm.vmid}</span>
+            <span className="text-[#333333]">·</span>
+            <span className="text-xs text-[#555555]">{vm.node}</span>
+          </div>
+        </div>
+        <StatusBadge status={vm.status} />
+      </div>
+
+      {/* Stats */}
+      {isRunning && (
+        <div className="mt-4 flex flex-col gap-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-[#888888]">CPU</span>
+            <span className="text-[#e0e0e0] font-mono">{cpuPercent}%</span>
+          </div>
+          <div className="h-1 w-full overflow-hidden rounded-full bg-[#222222]">
+            <div
+              className="h-full rounded-full bg-[#00ff88] transition-all"
+              style={{ width: `${cpuPercent}%` }}
+            />
+          </div>
+
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-[#888888]">RAM</span>
+            <span className="text-[#e0e0e0] font-mono">{formatBytes(vm.mem)} / {formatBytes(vm.maxmem)}</span>
+          </div>
+          <div className="h-1 w-full overflow-hidden rounded-full bg-[#222222]">
+            <div
+              className="h-full rounded-full bg-[#00ff88] transition-all"
+              style={{ width: `${memPercent}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {!isRunning && (
+        <div className="mt-4 flex items-center justify-center py-3">
+          <span className="text-xs text-[#555555]">Stopped</span>
+        </div>
+      )}
+    </Link>
   );
 }

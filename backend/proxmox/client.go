@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -120,14 +121,14 @@ func (c *Client) post(path string, body interface{}) (string, error) {
 }
 
 func (c *Client) postForm(path string, params map[string]string) (string, error) {
-	url := fmt.Sprintf("%s/api2/json/%s", c.baseURL, strings.TrimLeft(path, "/"))
+	endpoint := fmt.Sprintf("%s/api2/json/%s", c.baseURL, strings.TrimLeft(path, "/"))
 
-	form := make([]string, 0, len(params))
+	form := url.Values{}
 	for k, v := range params {
-		form = append(form, fmt.Sprintf("%s=%s", k, v))
+		form.Set(k, v)
 	}
 
-	req, err := http.NewRequest("POST", url, strings.NewReader(strings.Join(form, "&")))
+	req, err := http.NewRequest("POST", endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", fmt.Errorf("creating request: %w", err)
 	}
@@ -158,14 +159,14 @@ func (c *Client) postForm(path string, params map[string]string) (string, error)
 }
 
 func (c *Client) putForm(path string, params map[string]string) (string, error) {
-	url := fmt.Sprintf("%s/api2/json/%s", c.baseURL, strings.TrimLeft(path, "/"))
+	endpoint := fmt.Sprintf("%s/api2/json/%s", c.baseURL, strings.TrimLeft(path, "/"))
 
-	form := make([]string, 0, len(params))
+	form := url.Values{}
 	for k, v := range params {
-		form = append(form, fmt.Sprintf("%s=%s", k, v))
+		form.Set(k, v)
 	}
 
-	req, err := http.NewRequest("PUT", url, strings.NewReader(strings.Join(form, "&")))
+	req, err := http.NewRequest("PUT", endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", fmt.Errorf("creating request: %w", err)
 	}
@@ -235,4 +236,31 @@ func (c *Client) setAuth(req *http.Request) {
 func (c *Client) Ping() error {
 	var version map[string]interface{}
 	return c.get("version", &version)
+}
+
+// GetTaskStatus returns the status of an async Proxmox task.
+func (c *Client) GetTaskStatus(node, upid string) (*TaskStatus, error) {
+	var status TaskStatus
+	err := c.get(fmt.Sprintf("nodes/%s/tasks/%s/status", node, url.PathEscape(upid)), &status)
+	return &status, err
+}
+
+// WaitForTask polls until a Proxmox task completes, returns nil on success.
+func (c *Client) WaitForTask(node, upid string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		status, err := c.GetTaskStatus(node, upid)
+		if err != nil {
+			time.Sleep(2 * time.Second)
+			continue
+		}
+		if status.Status == "stopped" {
+			if status.ExitStatus == "OK" {
+				return nil
+			}
+			return fmt.Errorf("task failed: %s", status.ExitStatus)
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return fmt.Errorf("timeout waiting for task %s", upid)
 }
