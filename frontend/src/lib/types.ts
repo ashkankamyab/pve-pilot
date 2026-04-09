@@ -94,34 +94,6 @@ export interface CloneRequest {
   full?: boolean;
 }
 
-export interface CreateVMRequest {
-  vmid: number;
-  name: string;
-  node: string;
-  ostype: string;
-  cores: number;
-  memory: number;
-  diskSize: number;
-  storage: string;
-  iso?: string;
-}
-
-export interface DeleteRequest {
-  node: string;
-  vmid: number;
-  type: "qemu" | "lxc";
-}
-
-export interface ProvisionRequest {
-  newid: number;
-  name: string;
-  target?: string;
-  full?: boolean;
-  password?: string;
-  sshkeys?: string;
-  disk_size?: number;
-}
-
 export interface IPAddress {
   "ip-address-type": string;
   "ip-address": string;
@@ -132,4 +104,45 @@ export interface NetworkInterface {
   name: string;
   "hardware-address": string;
   "ip-addresses": IPAddress[];
+}
+
+export interface FilesystemInfo {
+  name: string;
+  mountpoint: string;
+  type: string;
+  "total-bytes"?: number;
+  "used-bytes"?: number;
+}
+
+// Job types for async provision via NATS
+export type JobStatus = "pending" | "running" | "completed" | "failed";
+export type JobStep = "" | "cloning" | "configuring" | "resizing" | "starting" | "waiting_for_running" | "ready";
+
+export interface Job {
+  id: string;
+  type: "vm" | "container";
+  status: JobStatus;
+  step: JobStep;
+  progress: number;
+  error?: string;
+  created_at: string;
+  updated_at: string;
+  source_node: string;
+  source_vmid: number;
+  target_node: string;
+  new_vmid: number;
+  name: string;
+  ciuser?: string;
+  disk_size?: number;
+  full_clone: boolean;
+  ip_address?: string;
+}
+
+export interface JobEvent {
+  job_id: string;
+  status: JobStatus;
+  step: JobStep;
+  progress: number;
+  error?: string;
+  ip_address?: string;
 }

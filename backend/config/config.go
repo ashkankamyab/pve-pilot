@@ -12,6 +12,8 @@ type Config struct {
 	FrontendURL        string
 	Port               string
 	InsecureTLS        bool
+	NatsURL            string
+	DNSDomain          string
 }
 
 func Load() Config {
@@ -24,6 +26,8 @@ func Load() Config {
 		FrontendURL:        getEnv("FRONTEND_URL", "http://localhost:3000"),
 		Port:               getEnv("PORT", "8080"),
 		InsecureTLS:        insecure,
+		NatsURL:            getEnv("NATS_URL", "nats://localhost:4222"),
+		DNSDomain:          getEnv("DNS_DOMAIN", ""),
 	}
 }
 

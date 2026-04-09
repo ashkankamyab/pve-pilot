@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import Shell from "@/components/layout/Shell";
+import { JobsProvider } from "@/contexts/JobsContext";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -36,7 +37,9 @@ export default function RootLayout({
         className="min-h-full bg-[#0a0a0a] text-[#e0e0e0]"
         style={{ fontFamily: "var(--font-inter), system-ui, sans-serif" }}
       >
-        <Shell>{children}</Shell>
+        <JobsProvider>
+          <Shell>{children}</Shell>
+        </JobsProvider>
       </body>
     </html>
   );

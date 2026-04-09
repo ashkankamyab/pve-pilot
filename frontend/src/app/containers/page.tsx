@@ -207,7 +207,6 @@ export default function ContainersPage() {
         templates={(templates ?? []).filter((t) => t.vmtype === "lxc")}
         nodes={nodes ?? []}
         onSuccess={() => {
-          setShowCreateFromTemplate(false);
           setTimeout(refresh, 2000);
         }}
       />
