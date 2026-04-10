@@ -37,7 +37,7 @@ export default function VMsPage() {
       })
     );
 
-    return results.flat();
+    return results.flat().sort((a, b) => a.vmid - b.vmid);
   }, []);
 
   const fetchNodes = useCallback(async () => {
