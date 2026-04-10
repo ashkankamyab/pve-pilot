@@ -15,6 +15,7 @@ interface CreateFromTemplateModalProps {
   templates: TemplateInfo[];
   nodes: string[];
   onSuccess: () => void;
+  defaultType?: "qemu" | "lxc";
 }
 
 interface ExtraVolume {
@@ -26,18 +27,32 @@ const STEP_PROGRESS: Record<string, number> = {
   "": 0, cloning: 10, configuring: 30, resizing: 45, adding_disks: 55, starting: 70, waiting_for_running: 85, ready: 100,
 };
 
-const STEP_LABELS: Record<string, string> = {
-  "": "Queued...", cloning: "Cloning template...", configuring: "Configuring cloud-init...",
-  resizing: "Resizing disk...", adding_disks: "Adding extra volumes...", starting: "Starting VM...",
-  waiting_for_running: "Waiting for VM to come online...", ready: "Ready!",
-};
+function stepLabels(isContainer: boolean): Record<string, string> {
+  const noun = isContainer ? "container" : "VM";
+  return {
+    "": "Queued...",
+    cloning: "Cloning template...",
+    configuring: isContainer ? "Configuring container..." : "Configuring cloud-init...",
+    resizing: "Resizing disk...",
+    adding_disks: "Adding extra volumes...",
+    starting: `Starting ${noun}...`,
+    waiting_for_running: `Waiting for ${noun} to come online...`,
+    ready: "Ready!",
+  };
+}
 
-const STEP_LIST: { key: JobStep | "adding_disks"; label: string }[] = [
-  { key: "cloning", label: "Clone template" }, { key: "configuring", label: "Configure cloud-init" },
-  { key: "resizing", label: "Resize disk" }, { key: "adding_disks", label: "Add extra volumes" },
-  { key: "starting", label: "Start VM" }, { key: "waiting_for_running", label: "Wait for running" },
-  { key: "ready", label: "Ready" },
-];
+function stepList(isContainer: boolean): { key: JobStep | "adding_disks"; label: string }[] {
+  const noun = isContainer ? "container" : "VM";
+  return [
+    { key: "cloning", label: "Clone template" },
+    { key: "configuring", label: isContainer ? "Configure container" : "Configure cloud-init" },
+    { key: "resizing", label: "Resize disk" },
+    { key: "adding_disks", label: "Add extra volumes" },
+    { key: "starting", label: `Start ${noun}` },
+    { key: "waiting_for_running", label: "Wait for running" },
+    { key: "ready", label: "Ready" },
+  ];
+}
 
 const VOLUME_SIZES = [10, 20, 30, 50, 100, 150, 200, 300, 500, 1000];
 
@@ -53,22 +68,27 @@ function generatePassword(): string {
 }
 
 export default function CreateFromTemplateModal({
-  isOpen, onClose, templates, nodes, onSuccess,
+  isOpen, onClose, templates, nodes, onSuccess, defaultType = "qemu",
 }: CreateFromTemplateModalProps) {
   const { addJob, getJob } = useJobs();
+
+  const isLxcDefault = defaultType === "lxc";
+  const defaultCores = isLxcDefault ? "1" : "2";
+  const defaultMemory = isLxcDefault ? "512" : "2048";
+  const defaultDisk = isLxcDefault ? "5" : "30";
 
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [name, setName] = useState("");
   const [targetNode, setTargetNode] = useState("");
   const [storage, setStorage] = useState("");
   const [ciUser, setCiUser] = useState("");
-  const [cores, setCores] = useState("2");
-  const [memory, setMemory] = useState("2048");
+  const [cores, setCores] = useState(defaultCores);
+  const [memory, setMemory] = useState(defaultMemory);
   const [passwordMode, setPasswordMode] = useState<"set" | "generate">("set");
   const [password, setPassword] = useState("");
   const [generatedPassword, setGeneratedPassword] = useState("");
   const [sshKey, setSshKey] = useState("");
-  const [diskSize, setDiskSize] = useState("30");
+  const [diskSize, setDiskSize] = useState(defaultDisk);
   const [extraVolumes, setExtraVolumes] = useState<ExtraVolume[]>([]);
   const [userData, setUserData] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -90,16 +110,17 @@ export default function CreateFromTemplateModal({
   useEffect(() => {
     const node = selectedTemplate?.node;
     if (!node) return;
+    const contentType = selectedTemplate?.vmtype === "lxc" ? "rootdir" : "images";
     apiFetch<StorageInfo[]>(`/nodes/${node}/storage`).then((list) => {
       const valid = list.filter(
-        (s) => s.storage !== "local" && s.enabled && s.content.includes("images")
+        (s) => s.storage !== "local" && s.enabled && s.content.includes(contentType)
       );
       setStorages(valid);
-      if (valid.length > 0 && !storage) {
+      if (valid.length > 0) {
         setStorage(valid[0].storage);
       }
     }).catch(() => setStorages([]));
-  }, [selectedTemplate?.node]);
+  }, [selectedTemplate?.node, selectedTemplate?.vmtype]);
 
   useEffect(() => {
     if (selectedTemplate?.name) {
@@ -107,6 +128,20 @@ export default function CreateFromTemplateModal({
       setCiUser(DISTRO_USERS[distro]);
     }
   }, [selectedTemplate?.name]);
+
+  // Adjust default resources based on template type (LXC can run with much less)
+  useEffect(() => {
+    if (!selectedTemplate?.vmtype) return;
+    if (selectedTemplate.vmtype === "lxc") {
+      setCores("1");
+      setMemory("512");
+      setDiskSize("5");
+    } else {
+      setCores("2");
+      setMemory("2048");
+      setDiskSize("30");
+    }
+  }, [selectedTemplate?.vmtype]);
 
   const activeJob = activeJobId ? getJob(activeJobId) : null;
   const showProgress = activeJob != null;
@@ -133,6 +168,33 @@ export default function CreateFromTemplateModal({
     if (!selectedTemplate || !nextVmid || !name) return;
 
     setError(null);
+
+    // Validate storage capacity before submitting
+    const osDiskGB = parseInt(diskSize, 10);
+    const GB = 1024 * 1024 * 1024;
+
+    // Aggregate required space per storage
+    const required: Record<string, number> = {};
+    if (storage) required[storage] = (required[storage] || 0) + osDiskGB;
+    for (const v of extraVolumes) {
+      const size = parseInt(v.size, 10);
+      if (v.storage && size > 0) {
+        required[v.storage] = (required[v.storage] || 0) + size;
+      }
+    }
+
+    for (const [storageName, totalGB] of Object.entries(required)) {
+      const s = storages.find((x) => x.storage === storageName);
+      if (!s) continue;
+      const availGB = s.avail / GB;
+      if (totalGB > availGB) {
+        setError(
+          `Not enough space on "${storageName}": need ${totalGB} GB but only ${availGB.toFixed(1)} GB free.`
+        );
+        return;
+      }
+    }
+
     setSubmitting(true);
 
     const typePrefix = selectedTemplate.vmtype === "qemu" ? "vms" : "containers";
@@ -154,6 +216,8 @@ export default function CreateFromTemplateModal({
           ciuser: ciUser || undefined,
           password: effectivePassword || undefined,
           sshkeys: sshKey || undefined,
+          cores: parseInt(cores, 10),
+          memory: parseInt(memory, 10),
           disk_size: parseInt(diskSize, 10),
           extra_volumes: extraVols.length > 0 ? extraVols : undefined,
           user_data: userData || undefined,
@@ -195,10 +259,10 @@ export default function CreateFromTemplateModal({
 
   const resetForm = useCallback(() => {
     setSelectedTemplateId(""); setName(""); setTargetNode(""); setStorage(""); setCiUser("");
-    setCores("2"); setMemory("2048"); setPasswordMode("set"); setPassword(""); setGeneratedPassword("");
-    setSshKey(""); setDiskSize("30"); setExtraVolumes([]); setUserData(""); setError(null); setActiveJobId(null);
+    setCores(defaultCores); setMemory(defaultMemory); setPasswordMode("set"); setPassword(""); setGeneratedPassword("");
+    setSshKey(""); setDiskSize(defaultDisk); setExtraVolumes([]); setUserData(""); setError(null); setActiveJobId(null);
     setSubmitting(false); setNextVmid(null); setStorages([]);
-  }, []);
+  }, [defaultCores, defaultMemory, defaultDisk]);
 
   const handleClose = () => { if (isTerminal) resetForm(); onClose(); };
   const handleDone = () => { resetForm(); onClose(); };
@@ -207,6 +271,9 @@ export default function CreateFromTemplateModal({
   const currentStep = activeJob?.step || "";
   const currentProgress = STEP_PROGRESS[currentStep] ?? 0;
   const sshUser = activeJob?.ciuser || ciUser || "root";
+  const isContainer = (activeJob?.type === "container") || (selectedTemplate?.vmtype === "lxc");
+  const STEP_LABELS = stepLabels(isContainer);
+  const STEP_LIST = stepList(isContainer);
 
   const inputClass = "w-full rounded-md border border-[#222222] bg-[#0a0a0a] px-3 py-2 text-sm text-[#e0e0e0] outline-none focus:border-[#00ff88]";
 
@@ -265,15 +332,15 @@ export default function CreateFromTemplateModal({
             </div>
             <input
               type="range"
-              min="15"
+              min={(selectedTemplate?.vmtype === "lxc" || (!selectedTemplate && isLxcDefault)) ? "2" : "15"}
               max="500"
-              step="5"
+              step={(selectedTemplate?.vmtype === "lxc" || (!selectedTemplate && isLxcDefault)) ? "1" : "5"}
               value={diskSize}
               onChange={(e) => setDiskSize(e.target.value)}
               className="w-full accent-[#00ff88]"
             />
             <div className="flex justify-between text-[10px] text-[#555555]">
-              <span>15 GB</span>
+              <span>{(selectedTemplate?.vmtype === "lxc" || (!selectedTemplate && isLxcDefault)) ? "2 GB" : "15 GB"}</span>
               <span>500 GB</span>
             </div>
           </div>
@@ -395,7 +462,10 @@ export default function CreateFromTemplateModal({
       ) : (
         <div className="flex flex-col gap-5">
           {activeJob?.status === "failed" && activeJob.error && (
-            <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">{activeJob.error}</div>
+            <div className="flex flex-col gap-1.5 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3">
+              <div className="text-xs font-medium text-red-300 uppercase tracking-wider">Provision failed</div>
+              <div className="break-words text-sm text-red-200 font-mono leading-relaxed">{activeJob.error}</div>
+            </div>
           )}
 
           <div className="flex flex-col gap-2">

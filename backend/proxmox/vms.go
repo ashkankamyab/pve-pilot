@@ -90,6 +90,22 @@ func (c *Client) AddDisk(node string, vmid int, bus string, storage string, size
 	return err
 }
 
+// SetVMResources updates cores/memory on a QEMU VM.
+func (c *Client) SetVMResources(node string, vmid int, cores, memoryMB int) error {
+	params := map[string]string{}
+	if cores > 0 {
+		params["cores"] = fmt.Sprintf("%d", cores)
+	}
+	if memoryMB > 0 {
+		params["memory"] = fmt.Sprintf("%d", memoryMB)
+	}
+	if len(params) == 0 {
+		return nil
+	}
+	_, err := c.postForm(fmt.Sprintf("nodes/%s/qemu/%d/config", node, vmid), params)
+	return err
+}
+
 // ResizeDisk resizes a disk on a VM
 func (c *Client) ResizeDisk(node string, vmid int, disk string, size string) error {
 	params := map[string]string{

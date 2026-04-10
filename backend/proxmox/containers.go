@@ -2,9 +2,21 @@ package proxmox
 
 import (
 	"fmt"
-	"net/url"
-	"strings"
 )
+
+// GetContainerConfig returns the full LXC container configuration.
+func (c *Client) GetContainerConfig(node string, vmid int) (map[string]interface{}, error) {
+	var cfg map[string]interface{}
+	err := c.get(fmt.Sprintf("nodes/%s/lxc/%d/config", node, vmid), &cfg)
+	return cfg, err
+}
+
+// GetContainerInterfaces returns network interfaces as reported by the running container.
+func (c *Client) GetContainerInterfaces(node string, vmid int) ([]map[string]interface{}, error) {
+	var result []map[string]interface{}
+	err := c.get(fmt.Sprintf("nodes/%s/lxc/%d/interfaces", node, vmid), &result)
+	return result, err
+}
 
 func (c *Client) ListContainers(node string) ([]ContainerStatus, error) {
 	var containers []ContainerStatus
@@ -53,17 +65,14 @@ func (c *Client) CloneContainer(node string, vmid int, newID int, hostname, targ
 	return c.postForm(fmt.Sprintf("nodes/%s/lxc/%d/clone", node, vmid), params)
 }
 
-// ConfigureContainerCloudInit sets password and SSH keys on an LXC container
-func (c *Client) ConfigureContainerCloudInit(node string, vmid int, password, sshkeys string) error {
+// SetContainerResources updates cores/memory on an LXC container.
+func (c *Client) SetContainerResources(node string, vmid int, cores, memoryMB int) error {
 	params := map[string]string{}
-	if password != "" {
-		params["password"] = password
+	if cores > 0 {
+		params["cores"] = fmt.Sprintf("%d", cores)
 	}
-	if sshkeys != "" {
-		// LXC ssh-public-keys also needs URL-encoding like QEMU sshkeys
-		encoded := url.QueryEscape(sshkeys)
-		encoded = strings.ReplaceAll(encoded, "+", "%20")
-		params["ssh-public-keys"] = encoded
+	if memoryMB > 0 {
+		params["memory"] = fmt.Sprintf("%d", memoryMB)
 	}
 	if len(params) == 0 {
 		return nil
@@ -72,12 +81,26 @@ func (c *Client) ConfigureContainerCloudInit(node string, vmid int, password, ss
 	return err
 }
 
-// ResizeContainerDisk resizes a disk on an LXC container
-func (c *Client) ResizeContainerDisk(node string, vmid int, disk string, size string) error {
+// ConfigureContainerHostname sets the hostname and other basic config on an LXC container.
+// Note: Proxmox LXC /config endpoint does NOT accept password/ssh-public-keys — those are only
+// valid during container creation (POST /lxc), not clone/update. For credentials on LXC,
+// bake them into the template or use SSH to the Proxmox host to run pct exec.
+func (c *Client) ConfigureContainerHostname(node string, vmid int, hostname string) error {
+	if hostname == "" {
+		return nil
+	}
+	params := map[string]string{
+		"hostname": hostname,
+	}
+	_, err := c.putForm(fmt.Sprintf("nodes/%s/lxc/%d/config", node, vmid), params)
+	return err
+}
+
+// ResizeContainerDisk resizes a disk on an LXC container. Returns UPID.
+func (c *Client) ResizeContainerDisk(node string, vmid int, disk string, size string) (string, error) {
 	params := map[string]string{
 		"disk": disk,
 		"size": size,
 	}
-	_, err := c.putForm(fmt.Sprintf("nodes/%s/lxc/%d/resize", node, vmid), params)
-	return err
+	return c.putForm(fmt.Sprintf("nodes/%s/lxc/%d/resize", node, vmid), params)
 }

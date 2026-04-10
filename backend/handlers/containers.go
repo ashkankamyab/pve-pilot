@@ -19,6 +19,36 @@ func ListContainers(c *gin.Context) {
 	c.JSON(http.StatusOK, containers)
 }
 
+func GetContainerConfig(c *gin.Context) {
+	node := c.Param("node")
+	vmid, err := strconv.Atoi(c.Param("vmid"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid vmid"})
+		return
+	}
+	cfg, err := PVE.GetContainerConfig(node, vmid)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, cfg)
+}
+
+func GetContainerInterfaces(c *gin.Context) {
+	node := c.Param("node")
+	vmid, err := strconv.Atoi(c.Param("vmid"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid vmid"})
+		return
+	}
+	ifaces, err := PVE.GetContainerInterfaces(node, vmid)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, ifaces)
+}
+
 func GetContainerStatus(c *gin.Context) {
 	node := c.Param("node")
 	vmid, err := strconv.Atoi(c.Param("vmid"))
@@ -137,6 +167,8 @@ func ProvisionContainer(c *gin.Context) {
 		CIUser:       req.CIUser,
 		Password:     req.Password,
 		SSHKeys:      req.SSHKeys,
+		Cores:        req.Cores,
+		Memory:       req.Memory,
 		DiskSize:     req.DiskSize,
 		ExtraVolumes: req.ExtraVolumes,
 		UserData:     req.UserData,

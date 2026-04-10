@@ -54,6 +54,8 @@ type Job struct {
 	Name         string                `json:"name"`
 	Storage      string                `json:"storage,omitempty"`
 	CIUser       string                `json:"ciuser,omitempty"`
+	Cores        int                   `json:"cores,omitempty"`
+	Memory       int                   `json:"memory,omitempty"`
 	Password     string                `json:"-"`
 	SSHKeys      string                `json:"-"`
 	DiskSize     int                   `json:"disk_size,omitempty"`
@@ -75,6 +77,8 @@ type ProvisionPayload struct {
 	Name         string                `json:"name"`
 	Storage      string                `json:"storage,omitempty"`
 	CIUser       string                `json:"ciuser,omitempty"`
+	Cores        int                   `json:"cores,omitempty"`
+	Memory       int                   `json:"memory,omitempty"`
 	Password     string                `json:"password,omitempty"`
 	SSHKeys      string                `json:"sshkeys,omitempty"`
 	DiskSize     int                   `json:"disk_size,omitempty"`

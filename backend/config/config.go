@@ -14,6 +14,10 @@ type Config struct {
 	InsecureTLS        bool
 	NatsURL            string
 	DNSDomain          string
+	ProxmoxSSHHost     string
+	ProxmoxSSHPort     string
+	ProxmoxSSHUser     string
+	ProxmoxSSHKeyPath  string
 }
 
 func Load() Config {
@@ -28,6 +32,10 @@ func Load() Config {
 		InsecureTLS:        insecure,
 		NatsURL:            getEnv("NATS_URL", "nats://localhost:4222"),
 		DNSDomain:          getEnv("DNS_DOMAIN", ""),
+		ProxmoxSSHHost:     getEnv("PROXMOX_SSH_HOST", ""),
+		ProxmoxSSHPort:     getEnv("PROXMOX_SSH_PORT", "22"),
+		ProxmoxSSHUser:     getEnv("PROXMOX_SSH_USER", "root"),
+		ProxmoxSSHKeyPath:  getEnv("PROXMOX_SSH_KEY_PATH", ""),
 	}
 }
 

@@ -27,7 +27,15 @@ services:
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
       - NATS_URL=nats://nats:4222
       - DNS_DOMAIN=${DNS_DOMAIN:-}
+      - PROXMOX_SSH_HOST=${PROXMOX_SSH_HOST:-}
+      - PROXMOX_SSH_PORT=${PROXMOX_SSH_PORT:-22}
+      - PROXMOX_SSH_USER=${PROXMOX_SSH_USER:-root}
+      - PROXMOX_SSH_KEY_PATH=${PROXMOX_SSH_KEY_PATH:-/app/ssh/id_ed25519}
       - PORT=8080
+    volumes:
+      # Mount SSH private key for pct exec into LXC containers (optional).
+      # Set PROXMOX_SSH_KEY_HOST_PATH in .env to the path of your private key on the host.
+      - ${PROXMOX_SSH_KEY_HOST_PATH:-/dev/null}:/app/ssh/id_ed25519:ro
     depends_on:
       nats:
         condition: service_healthy

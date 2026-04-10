@@ -174,6 +174,8 @@ type ProvisionRequest struct {
 	CIUser       string        `json:"ciuser,omitempty"`
 	Password     string        `json:"password,omitempty"`
 	SSHKeys      string        `json:"sshkeys,omitempty"`
+	Cores        int           `json:"cores,omitempty"`
+	Memory       int           `json:"memory,omitempty"` // in MB
 	DiskSize     int           `json:"disk_size,omitempty"` // in GB
 	ExtraVolumes []ExtraVolume `json:"extra_volumes,omitempty"`
 	UserData     string        `json:"user_data,omitempty"` // cloud-init user-data script

@@ -137,6 +137,8 @@ func ProvisionVM(c *gin.Context) {
 		CIUser:       req.CIUser,
 		Password:     req.Password,
 		SSHKeys:      req.SSHKeys,
+		Cores:        req.Cores,
+		Memory:       req.Memory,
 		DiskSize:     req.DiskSize,
 		ExtraVolumes: req.ExtraVolumes,
 		UserData:     req.UserData,

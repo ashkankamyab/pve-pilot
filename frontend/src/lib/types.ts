@@ -106,6 +106,28 @@ export interface NetworkInterface {
   "ip-addresses": IPAddress[];
 }
 
+export interface ContainerConfig {
+  hostname?: string;
+  ostype?: string;
+  cores?: number;
+  memory?: number;
+  swap?: number;
+  rootfs?: string;
+  net0?: string;
+  searchdomain?: string;
+  nameserver?: string;
+  unprivileged?: number;
+  [key: string]: unknown;
+}
+
+export interface ContainerNetInterface {
+  name: string;
+  hwaddr?: string;
+  inet?: string;
+  inet6?: string;
+  [key: string]: unknown;
+}
+
 export interface FilesystemInfo {
   name: string;
   mountpoint: string;

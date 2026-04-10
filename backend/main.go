@@ -35,6 +35,17 @@ func main() {
 		log.Printf("Connected to Proxmox at %s", cfg.ProxmoxURL)
 	}
 
+	// Initialize host SSH (for LXC credential injection via pct exec)
+	hostSSH, err := proxmox.NewHostSSH(cfg.ProxmoxSSHHost, cfg.ProxmoxSSHPort, cfg.ProxmoxSSHUser, cfg.ProxmoxSSHKeyPath)
+	if err != nil {
+		log.Printf("WARNING: Host SSH setup failed: %v", err)
+	}
+	if hostSSH.IsEnabled() {
+		log.Printf("Host SSH enabled for %s@%s:%s (LXC credential injection available)", cfg.ProxmoxSSHUser, cfg.ProxmoxSSHHost, cfg.ProxmoxSSHPort)
+	} else {
+		log.Printf("Host SSH not configured — LXC credential injection disabled. Set PROXMOX_SSH_HOST, PROXMOX_SSH_USER, PROXMOX_SSH_KEY_PATH to enable.")
+	}
+
 	// Connect to NATS
 	nc, err := nats.Connect(cfg.NatsURL)
 	if err != nil {
@@ -50,7 +61,7 @@ func main() {
 	handlers.DNSDomain = cfg.DNSDomain
 
 	// Start worker
-	worker := jobs.NewWorker(nc, jobStore, handlers.PVE)
+	worker := jobs.NewWorker(nc, jobStore, handlers.PVE, hostSSH)
 	if err := worker.Start(); err != nil {
 		log.Fatalf("Failed to start worker: %v", err)
 	}
@@ -83,6 +94,8 @@ func main() {
 
 		api.GET("/nodes/:node/containers", handlers.ListContainers)
 		api.GET("/nodes/:node/containers/:vmid/status", handlers.GetContainerStatus)
+		api.GET("/nodes/:node/containers/:vmid/config", handlers.GetContainerConfig)
+		api.GET("/nodes/:node/containers/:vmid/interfaces", handlers.GetContainerInterfaces)
 		api.POST("/nodes/:node/containers/:vmid/start", handlers.StartContainer)
 		api.POST("/nodes/:node/containers/:vmid/stop", handlers.StopContainer)
 		api.POST("/nodes/:node/containers/:vmid/reboot", handlers.RebootContainer)

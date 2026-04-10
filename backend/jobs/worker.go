@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/ashkankamyab/pve-pilot/proxmox"
@@ -14,13 +15,14 @@ const SubjectProvision = "jobs.provision"
 
 // Worker subscribes to NATS and executes provision jobs.
 type Worker struct {
-	nc    *nats.Conn
-	store *Store
-	pve   *proxmox.Client
+	nc      *nats.Conn
+	store   *Store
+	pve     *proxmox.Client
+	hostSSH *proxmox.HostSSH
 }
 
-func NewWorker(nc *nats.Conn, store *Store, pve *proxmox.Client) *Worker {
-	return &Worker{nc: nc, store: store, pve: pve}
+func NewWorker(nc *nats.Conn, store *Store, pve *proxmox.Client, hostSSH *proxmox.HostSSH) *Worker {
+	return &Worker{nc: nc, store: store, pve: pve, hostSSH: hostSSH}
 }
 
 // Start subscribes to the provision subject and processes jobs.
@@ -77,6 +79,14 @@ func (w *Worker) provisionVM(p ProvisionPayload) {
 		log.Printf("worker [%s]: configuring cloud-init for VM %d (user=%s, domain=%s)", id, p.NewVMID, p.CIUser, p.DNSDomain)
 		if err := w.pve.ConfigureCloudInit(targetNode, p.NewVMID, p.CIUser, p.Password, p.SSHKeys, p.DNSDomain); err != nil {
 			log.Printf("worker [%s]: cloud-init config failed for VM %d: %v", id, p.NewVMID, err)
+		}
+	}
+
+	// Apply cores/memory overrides from the form
+	if p.Cores > 0 || p.Memory > 0 {
+		log.Printf("worker [%s]: setting VM %d resources cores=%d memory=%dMB", id, p.NewVMID, p.Cores, p.Memory)
+		if err := w.pve.SetVMResources(targetNode, p.NewVMID, p.Cores, p.Memory); err != nil {
+			log.Printf("worker [%s]: failed to set VM resources: %v", id, err)
 		}
 	}
 
@@ -177,21 +187,34 @@ func (w *Worker) provisionContainer(p ProvisionPayload) {
 	}
 	log.Printf("worker [%s]: clone task complete for container %d", id, p.NewVMID)
 
-	// Step 2: Configure
+	// Step 2: Configure hostname via API
 	w.store.UpdateStep(id, StepConfiguring, StatusRunning)
-	if p.Password != "" || p.SSHKeys != "" {
-		if err := w.pve.ConfigureContainerCloudInit(targetNode, p.NewVMID, p.Password, p.SSHKeys); err != nil {
-			log.Printf("worker [%s]: container config failed for %d: %v", id, p.NewVMID, err)
+	log.Printf("worker [%s]: configuring container %d hostname=%s", id, p.NewVMID, p.Name)
+	if err := w.pve.ConfigureContainerHostname(targetNode, p.NewVMID, p.Name); err != nil {
+		log.Printf("worker [%s]: container hostname config failed: %v", id, err)
+	}
+	if p.Cores > 0 || p.Memory > 0 {
+		log.Printf("worker [%s]: setting container %d resources cores=%d memory=%dMB", id, p.NewVMID, p.Cores, p.Memory)
+		if err := w.pve.SetContainerResources(targetNode, p.NewVMID, p.Cores, p.Memory); err != nil {
+			log.Printf("worker [%s]: failed to set container resources: %v", id, err)
 		}
 	}
+	time.Sleep(2 * time.Second)
 
 	// Step 3: Resize disk
 	w.store.UpdateStep(id, StepResizing, StatusRunning)
 	if p.DiskSize > 0 {
 		sizeStr := fmt.Sprintf("%dG", p.DiskSize)
-		if err := w.pve.ResizeContainerDisk(targetNode, p.NewVMID, "rootfs", sizeStr); err != nil {
+		log.Printf("worker [%s]: resizing container %d disk to %s", id, p.NewVMID, sizeStr)
+		resizeUpid, err := w.pve.ResizeContainerDisk(targetNode, p.NewVMID, "rootfs", sizeStr)
+		if err != nil {
 			log.Printf("worker [%s]: disk resize failed for container %d: %v", id, p.NewVMID, err)
+		} else if resizeUpid != "" {
+			if err := w.pve.WaitForTask(targetNode, resizeUpid, 120*time.Second); err != nil {
+				log.Printf("worker [%s]: resize task failed for container %d: %v", id, p.NewVMID, err)
+			}
 		}
+		time.Sleep(2 * time.Second)
 	}
 
 	// Step 4: Start container
@@ -215,9 +238,123 @@ func (w *Worker) provisionContainer(p ProvisionPayload) {
 		return
 	}
 
+	// Step 6: Inject credentials + user-data via pct exec (requires host SSH)
+	if w.hostSSH.IsEnabled() && (p.Password != "" || p.SSHKeys != "" || p.UserData != "") {
+		log.Printf("worker [%s]: injecting credentials into container %d via pct exec", id, p.NewVMID)
+		// Give container a moment to fully start services
+		time.Sleep(5 * time.Second)
+		if err := w.injectLXCCredentials(id, p); err != nil {
+			log.Printf("worker [%s]: failed to inject credentials: %v", id, err)
+		}
+	} else if !w.hostSSH.IsEnabled() && (p.Password != "" || p.SSHKeys != "") {
+		log.Printf("worker [%s]: host SSH not configured — credentials will not be injected. Set PROXMOX_SSH_HOST to enable.", id)
+	}
+
 	// Done
 	w.store.UpdateStep(id, StepReady, StatusCompleted)
 	log.Printf("worker [%s]: job completed (container %d on %s)", id, p.NewVMID, targetNode)
+}
+
+// injectLXCCredentials runs pct exec commands on the Proxmox host to set
+// root password, add SSH keys, enable password/root SSH, and run user-data.
+func (w *Worker) injectLXCCredentials(id string, p ProvisionPayload) error {
+	vmid := p.NewVMID
+
+	// Build a best-effort script — each command has its own error handling.
+	// No `set -e` because we want to continue on failures.
+	var script strings.Builder
+
+	script.WriteString(`#!/bin/bash
+# PVE Pilot LXC credential injection
+
+# Ensure openssh-server is installed (best effort across distros)
+if ! command -v sshd >/dev/null 2>&1 && ! [ -x /usr/sbin/sshd ]; then
+  (apt-get update -qq && apt-get install -y -qq openssh-server) >/dev/null 2>&1 \
+    || dnf install -y openssh-server >/dev/null 2>&1 \
+    || apk add --no-cache openssh >/dev/null 2>&1 \
+    || true
+fi
+`)
+
+	// Set root password (write to stdin of chpasswd via heredoc)
+	if p.Password != "" {
+		fmt.Fprintf(&script, `
+# Set root password
+cat <<'PVEPILOT_PW_EOF' | chpasswd
+root:%s
+PVEPILOT_PW_EOF
+`, p.Password)
+	}
+
+	// Add SSH public key to root's authorized_keys
+	if p.SSHKeys != "" {
+		fmt.Fprintf(&script, `
+# Add SSH public key
+mkdir -p /root/.ssh
+chmod 700 /root/.ssh
+cat <<'PVEPILOT_KEY_EOF' >> /root/.ssh/authorized_keys
+%s
+PVEPILOT_KEY_EOF
+chmod 600 /root/.ssh/authorized_keys
+# Deduplicate in case the same key was added before
+sort -u /root/.ssh/authorized_keys -o /root/.ssh/authorized_keys 2>/dev/null || true
+`, p.SSHKeys)
+	}
+
+	// Enable password auth and root login in sshd_config
+	if p.Password != "" || p.SSHKeys != "" {
+		rootLoginMode := "prohibit-password"
+		if p.Password != "" {
+			rootLoginMode = "yes"
+		}
+		fmt.Fprintf(&script, `
+# Configure sshd for the requested auth
+if [ -f /etc/ssh/sshd_config ]; then
+  sed -i 's/^#*PermitRootLogin.*/PermitRootLogin %s/' /etc/ssh/sshd_config 2>/dev/null || true
+fi
+`, rootLoginMode)
+
+		if p.Password != "" {
+			script.WriteString(`
+if [ -f /etc/ssh/sshd_config ]; then
+  sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config 2>/dev/null || true
+fi
+# Also patch drop-in configs if any exist
+for f in /etc/ssh/sshd_config.d/*.conf; do
+  [ -f "$f" ] || continue
+  sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' "$f" 2>/dev/null || true
+  sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' "$f" 2>/dev/null || true
+done
+`)
+		}
+
+		script.WriteString(`
+# Restart sshd (try multiple service names)
+systemctl restart sshd 2>/dev/null \
+  || systemctl restart ssh 2>/dev/null \
+  || service ssh restart 2>/dev/null \
+  || service sshd restart 2>/dev/null \
+  || true
+`)
+	}
+
+	script.WriteString("\necho 'PVE Pilot credential injection complete'\nexit 0\n")
+
+	if err := w.hostSSH.PctExec(vmid, script.String()); err != nil {
+		return fmt.Errorf("credential setup: %w", err)
+	}
+	log.Printf("worker [%s]: credentials injected into container %d", id, vmid)
+
+	// Run user-data script separately
+	if p.UserData != "" {
+		log.Printf("worker [%s]: running user-data script in container %d", id, vmid)
+		if err := w.hostSSH.PctExec(vmid, p.UserData); err != nil {
+			return fmt.Errorf("user-data: %w", err)
+		}
+		log.Printf("worker [%s]: user-data executed in container %d", id, vmid)
+	}
+
+	return nil
 }
 
 // waitForRunningAndIP polls until the VM is running, then tries to get IP.

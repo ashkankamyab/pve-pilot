@@ -116,6 +116,8 @@ func submitProvisionJob(jobType string, sourceNode string, sourceVMID int, targe
 		Name:       req.Name,
 		Storage:      req.Storage,
 		CIUser:       req.CIUser,
+		Cores:        req.Cores,
+		Memory:       req.Memory,
 		Password:     req.Password,
 		SSHKeys:      req.SSHKeys,
 		DiskSize:     req.DiskSize,
