@@ -4,18 +4,35 @@ import { useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { usePolling } from "@/hooks/usePolling";
 import { apiFetch, apiPost, apiDelete, formatBytes, formatUptime, cpuPercent, memPercent } from "@/lib/api";
-import { VMStatus, NetworkInterface, TemplateInfo, FilesystemInfo } from "@/lib/types";
+import { VMStatus, NetworkInterface, TemplateInfo, FilesystemInfo, StorageInfo } from "@/lib/types";
 import StatusBadge from "@/components/shared/StatusBadge";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import DistroIcon, { detectDistro, DISTRO_USERS } from "@/components/shared/DistroIcon";
 import ReinstallModal from "@/components/vms/ReinstallModal";
+import ScaleModal from "@/components/shared/ScaleModal";
+import ResizeDiskModal from "@/components/shared/ResizeDiskModal";
+import AddVolumeModal from "@/components/shared/AddVolumeModal";
 import { useJobs } from "@/contexts/JobsContext";
 import {
   ArrowLeft, Play, Square, RotateCcw, Trash2, RefreshCw,
   Cpu, MemoryStick, HardDrive, Clock, Network,
   KeyRound, User, Terminal, Eye, EyeOff, Copy, Check,
-  ArrowUpDown, ArrowDownUp,
+  ArrowUpDown, ArrowDownUp, SlidersHorizontal, Plus,
 } from "lucide-react";
+
+function parseDiskInfo(config: Record<string, unknown> | null): { name: string; currentSize: string; currentGB: number }[] {
+  if (!config) return [];
+  const disks: { name: string; currentSize: string; currentGB: number }[] = [];
+  for (const [key, value] of Object.entries(config)) {
+    if (/^(scsi|virtio|sata|ide)\d+$/.test(key) && typeof value === "string" && !value.includes("media=cdrom")) {
+      const sizeMatch = value.match(/size=(\d+)G/);
+      if (sizeMatch) {
+        disks.push({ name: key, currentSize: `${sizeMatch[1]}G`, currentGB: parseInt(sizeMatch[1], 10) });
+      }
+    }
+  }
+  return disks;
+}
 
 export default function VMDetailPage() {
   const params = useParams<{ node: string; vmid: string }>();
@@ -27,6 +44,9 @@ export default function VMDetailPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [confirmAction, setConfirmAction] = useState<"stop" | "reboot" | "delete" | null>(null);
   const [showReinstall, setShowReinstall] = useState(false);
+  const [showScale, setShowScale] = useState(false);
+  const [showResizeDisk, setShowResizeDisk] = useState(false);
+  const [showAddDisk, setShowAddDisk] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
@@ -39,12 +59,22 @@ export default function VMDetailPage() {
     try { return await apiFetch<FilesystemInfo[]>(`/nodes/${node}/vms/${vmid}/filesystems`); }
     catch { return []; }
   }, [node, vmid]);
+  const fetchVMConfig = useCallback(async () => {
+    try { return await apiFetch<Record<string, unknown>>(`/nodes/${node}/vms/${vmid}/config`); }
+    catch { return null; }
+  }, [node, vmid]);
+  const fetchStorages = useCallback(async () => {
+    try { return await apiFetch<StorageInfo[]>(`/nodes/${node}/storage`); }
+    catch { return []; }
+  }, [node]);
   const fetchTemplates = useCallback(() => apiFetch<TemplateInfo[]>("/templates"), []);
   const fetchSettings = useCallback(() => apiFetch<{ dns_domain: string }>("/settings"), []);
 
   const { data: vm, isLoading, refresh } = usePolling(fetchVM, 3000);
   const { data: interfaces } = usePolling(fetchInterfaces, 5000);
   const { data: filesystems } = usePolling(fetchFilesystems, 5000);
+  const { data: vmConfig } = usePolling(fetchVMConfig, 10000);
+  const { data: storageList } = usePolling(fetchStorages, 30000);
   const { data: templates } = usePolling(fetchTemplates, 60000);
   const { data: settings } = usePolling(fetchSettings, 60000);
   const buildJob = getJobByVmid(vmid);
@@ -107,23 +137,15 @@ export default function VMDetailPage() {
           <button disabled={!isRunning || actionLoading} onClick={() => setConfirmAction("reboot")} className={`${btnBase} border-[#222222] text-[#e0e0e0] hover:border-yellow-400 hover:text-yellow-400`}><RotateCcw size={13} /> Reboot</button>
           <button disabled={actionLoading} onClick={() => setShowReinstall(true)} className={`${btnBase} border-[#222222] text-[#e0e0e0] hover:border-orange-400 hover:text-orange-400`}><RefreshCw size={13} /> Reinstall</button>
           <div className="w-px h-6 bg-[#222222] mx-1" />
+          <button disabled={actionLoading} onClick={() => setShowScale(true)} className={`${btnBase} border-[#222222] text-[#e0e0e0] hover:border-blue-400 hover:text-blue-400`}><SlidersHorizontal size={13} /> Scale</button>
+          <button disabled={actionLoading} onClick={() => setShowResizeDisk(true)} className={`${btnBase} border-[#222222] text-[#e0e0e0] hover:border-blue-400 hover:text-blue-400`}><HardDrive size={13} /> Resize</button>
+          <button disabled={actionLoading} onClick={() => setShowAddDisk(true)} className={`${btnBase} border-[#222222] text-[#e0e0e0] hover:border-blue-400 hover:text-blue-400`}><Plus size={13} /> Add Disk</button>
+          <div className="w-px h-6 bg-[#222222] mx-1" />
           <button disabled={isRunning || actionLoading} onClick={() => setConfirmAction("delete")} className={`${btnBase} border-[#222222] text-[#555555] hover:border-red-500 hover:bg-red-500/10 hover:text-red-400`}><Trash2 size={13} /></button>
         </div>
       </div>
 
-      {/* Quick connect banner */}
-      {isRunning && primaryIp && (
-        <div className="flex items-center gap-4 rounded-lg border border-[#00ff88]/20 bg-[#00ff88]/5 px-5 py-3">
-          <Terminal size={16} className="text-[#00ff88] shrink-0" />
-          <code className="text-sm font-mono text-[#00ff88]">
-            ssh {sshUser || "root"}@{primaryIp}
-          </code>
-          <CopyBtn text={`ssh ${sshUser || "root"}@${primaryIp}`} field="ssh-banner" copied={copiedField} onCopy={copy} />
-          <div className="flex-1" />
-          <code className="text-xs font-mono text-[#888888]">{primaryIp}</code>
-          <CopyBtn text={primaryIp} field="ip-banner" copied={copiedField} onCopy={copy} small />
-        </div>
-      )}
+
 
       {/* Two-column layout */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -278,6 +300,15 @@ export default function VMDetailPage() {
       <ConfirmDialog isOpen={confirmAction === "delete"} onClose={() => setConfirmAction(null)} onConfirm={() => handleAction("delete")} title="Delete VM" message={`Are you sure you want to permanently delete VM ${vm.vmid} (${vm.name})? This action cannot be undone.`} />
       <ReinstallModal isOpen={showReinstall} onClose={() => setShowReinstall(false)} vmid={vmid} vmName={vm.name} node={node} currentDistroHint={vm.name}
         templates={(templates ?? []).filter((t) => t.vmtype === "qemu")} buildPassword={buildJob?.password} buildSshKey={buildJob?.sshkey} buildCiUser={buildJob?.ciuser} onSuccess={refresh} />
+
+      <ScaleModal isOpen={showScale} onClose={() => setShowScale(false)} node={node} vmid={vmid} vmName={vm.name}
+        type="vm" currentCores={vm.cpus} currentMemoryBytes={vm.maxmem} isRunning={isRunning} onSuccess={refresh} />
+
+      <ResizeDiskModal isOpen={showResizeDisk} onClose={() => setShowResizeDisk(false)} node={node} vmid={vmid}
+        type="vm" disks={parseDiskInfo(vmConfig)} onSuccess={refresh} />
+
+      <AddVolumeModal isOpen={showAddDisk} onClose={() => setShowAddDisk(false)} node={node} vmid={vmid}
+        type="vm" storages={storageList ?? []} onSuccess={refresh} />
     </div>
   );
 }

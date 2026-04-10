@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/ashkankamyab/pve-pilot/jobs"
 	"github.com/ashkankamyab/pve-pilot/proxmox"
@@ -187,4 +189,99 @@ func ProvisionContainer(c *gin.Context) {
 		"vmid":   req.NewID,
 		"node":   targetNode,
 	})
+}
+
+// ScaleContainer sets cores/memory on a container (hot update, no restart needed).
+func ScaleContainer(c *gin.Context) {
+	node := c.Param("node")
+	vmid, err := strconv.Atoi(c.Param("vmid"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid vmid"})
+		return
+	}
+
+	var req proxmox.ScaleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := PVE.SetContainerResources(node, vmid, req.Cores, req.MemoryMB); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"cores": req.Cores, "memory": req.MemoryMB})
+}
+
+// ResizeContainerDiskHandler grows a disk on an LXC container (hot resize, rootfs auto-expands).
+func ResizeContainerDiskHandler(c *gin.Context) {
+	node := c.Param("node")
+	vmid, err := strconv.Atoi(c.Param("vmid"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid vmid"})
+		return
+	}
+
+	var req proxmox.ResizeDiskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	upid, err := PVE.ResizeContainerDisk(node, vmid, req.Disk, req.Size)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+
+	if upid != "" {
+		if err := PVE.WaitForTask(node, upid, 120*time.Second); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("resize task failed: %v", err)})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"disk": req.Disk, "size": req.Size})
+}
+
+// AddContainerVolume attaches a new mountpoint to an LXC container, auto-selecting the next free mpN.
+func AddContainerVolume(c *gin.Context) {
+	node := c.Param("node")
+	vmid, err := strconv.Atoi(c.Param("vmid"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid vmid"})
+		return
+	}
+
+	var req proxmox.AddVolumeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Find next free mp slot
+	cfg, err := PVE.GetContainerConfig(node, vmid)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+
+	mpKey := ""
+	for i := 0; i <= 255; i++ {
+		key := fmt.Sprintf("mp%d", i)
+		if _, exists := cfg[key]; !exists {
+			mpKey = key
+			break
+		}
+	}
+	if mpKey == "" {
+		c.JSON(http.StatusConflict, gin.H{"error": "no free mount point slots"})
+		return
+	}
+
+	if err := PVE.AddContainerMountPoint(node, vmid, mpKey, req.Storage, req.SizeGB, req.MountPath); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"mount_point": mpKey, "storage": req.Storage, "size_gb": req.SizeGB, "path": req.MountPath})
 }

@@ -104,3 +104,13 @@ func (c *Client) ResizeContainerDisk(node string, vmid int, disk string, size st
 	}
 	return c.putForm(fmt.Sprintf("nodes/%s/lxc/%d/resize", node, vmid), params)
 }
+
+// AddContainerMountPoint adds a new mountpoint to an LXC container.
+// mpKey is e.g. "mp0", "mp1". Format: storage:sizeGB,mp=/mount/path
+func (c *Client) AddContainerMountPoint(node string, vmid int, mpKey, storage string, sizeGB int, mountPath string) error {
+	params := map[string]string{
+		mpKey: fmt.Sprintf("%s:%d,mp=%s", storage, sizeGB, mountPath),
+	}
+	_, err := c.putForm(fmt.Sprintf("nodes/%s/lxc/%d/config", node, vmid), params)
+	return err
+}

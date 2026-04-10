@@ -181,6 +181,31 @@ type ProvisionRequest struct {
 	UserData     string        `json:"user_data,omitempty"` // cloud-init user-data script
 }
 
+// ScaleRequest sets cores and/or memory on a VM or container
+type ScaleRequest struct {
+	Cores    int `json:"cores"`
+	MemoryMB int `json:"memory"`
+}
+
+// ResizeDiskRequest grows a disk (grow only, never shrink)
+type ResizeDiskRequest struct {
+	Disk string `json:"disk"` // e.g. "scsi0", "rootfs", "mp0"
+	Size string `json:"size"` // e.g. "50G"
+}
+
+// AddDiskRequest attaches a new disk to a QEMU VM
+type AddDiskRequest struct {
+	Storage string `json:"storage"`
+	SizeGB  int    `json:"size_gb"`
+}
+
+// AddVolumeRequest attaches a new mountpoint to an LXC container
+type AddVolumeRequest struct {
+	Storage   string `json:"storage"`
+	SizeGB    int    `json:"size_gb"`
+	MountPath string `json:"mount_path"` // e.g. "/mnt/data"
+}
+
 // NetworkInterface represents a network interface from qemu-guest-agent
 type NetworkInterface struct {
 	Name        string      `json:"name"`

@@ -12,6 +12,12 @@ func (c *Client) ListVMs(node string) ([]VMStatus, error) {
 	return vms, err
 }
 
+func (c *Client) GetVMConfig(node string, vmid int) (map[string]interface{}, error) {
+	var cfg map[string]interface{}
+	err := c.get(fmt.Sprintf("nodes/%s/qemu/%d/config", node, vmid), &cfg)
+	return cfg, err
+}
+
 func (c *Client) GetVMStatus(node string, vmid int) (*VMStatus, error) {
 	var status VMStatus
 	err := c.get(fmt.Sprintf("nodes/%s/qemu/%d/status/current", node, vmid), &status)

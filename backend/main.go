@@ -88,8 +88,12 @@ func main() {
 		api.POST("/nodes/:node/vms/:vmid/reboot", handlers.RebootVM)
 		api.POST("/nodes/:node/vms/:vmid/clone", handlers.CloneVM)
 		api.POST("/nodes/:node/vms/:vmid/provision", handlers.ProvisionVM)
+		api.GET("/nodes/:node/vms/:vmid/config", handlers.GetVMConfig)
 		api.GET("/nodes/:node/vms/:vmid/interfaces", handlers.GetVMInterfaces)
 		api.GET("/nodes/:node/vms/:vmid/filesystems", handlers.GetVMFilesystems)
+		api.POST("/nodes/:node/vms/:vmid/scale", handlers.ScaleVM)
+		api.POST("/nodes/:node/vms/:vmid/resize-disk", handlers.ResizeVMDisk)
+		api.POST("/nodes/:node/vms/:vmid/add-disk", handlers.AddVMDisk)
 		api.DELETE("/nodes/:node/vms/:vmid", handlers.DeleteVM)
 
 		api.GET("/nodes/:node/containers", handlers.ListContainers)
@@ -101,6 +105,9 @@ func main() {
 		api.POST("/nodes/:node/containers/:vmid/reboot", handlers.RebootContainer)
 		api.POST("/nodes/:node/containers/:vmid/clone", handlers.CloneContainer)
 		api.POST("/nodes/:node/containers/:vmid/provision", handlers.ProvisionContainer)
+		api.POST("/nodes/:node/containers/:vmid/scale", handlers.ScaleContainer)
+		api.POST("/nodes/:node/containers/:vmid/resize-disk", handlers.ResizeContainerDiskHandler)
+		api.POST("/nodes/:node/containers/:vmid/add-volume", handlers.AddContainerVolume)
 		api.DELETE("/nodes/:node/containers/:vmid", handlers.DeleteContainer)
 
 		api.GET("/templates", handlers.ListTemplates)

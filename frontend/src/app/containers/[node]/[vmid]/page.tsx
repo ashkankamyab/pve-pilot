@@ -4,17 +4,34 @@ import { useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { usePolling } from "@/hooks/usePolling";
 import { apiFetch, apiPost, apiDelete, formatBytes, formatUptime, cpuPercent, memPercent } from "@/lib/api";
-import { ContainerStatus, ContainerConfig, ContainerNetInterface } from "@/lib/types";
+import { ContainerStatus, ContainerConfig, ContainerNetInterface, StorageInfo } from "@/lib/types";
 import StatusBadge from "@/components/shared/StatusBadge";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import DistroIcon from "@/components/shared/DistroIcon";
+import ScaleModal from "@/components/shared/ScaleModal";
+import ResizeDiskModal from "@/components/shared/ResizeDiskModal";
+import AddVolumeModal from "@/components/shared/AddVolumeModal";
 import { useJobs } from "@/contexts/JobsContext";
 import {
   ArrowLeft, Play, Square, RotateCcw, Trash2,
   Cpu, MemoryStick, HardDrive, Clock, Network,
   KeyRound, Terminal, Eye, EyeOff, Copy, Check,
-  ArrowUpDown, ArrowDownUp, Box,
+  ArrowUpDown, ArrowDownUp, Box, SlidersHorizontal, Plus,
 } from "lucide-react";
+
+function parseContainerDisks(config: ContainerConfig | null): { name: string; currentSize: string; currentGB: number }[] {
+  if (!config) return [];
+  const disks: { name: string; currentSize: string; currentGB: number }[] = [];
+  for (const [key, value] of Object.entries(config)) {
+    if ((key === "rootfs" || /^mp\d+$/.test(key)) && typeof value === "string") {
+      const sizeMatch = value.match(/size=(\d+)G/);
+      if (sizeMatch) {
+        disks.push({ name: key, currentSize: `${sizeMatch[1]}G`, currentGB: parseInt(sizeMatch[1], 10) });
+      }
+    }
+  }
+  return disks;
+}
 
 export default function ContainerDetailPage() {
   const params = useParams<{ node: string; vmid: string }>();
@@ -25,6 +42,9 @@ export default function ContainerDetailPage() {
 
   const [actionLoading, setActionLoading] = useState(false);
   const [confirmAction, setConfirmAction] = useState<"stop" | "reboot" | "delete" | null>(null);
+  const [showScale, setShowScale] = useState(false);
+  const [showResizeDisk, setShowResizeDisk] = useState(false);
+  const [showAddVolume, setShowAddVolume] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
@@ -37,11 +57,16 @@ export default function ContainerDetailPage() {
     try { return await apiFetch<ContainerNetInterface[]>(`/nodes/${node}/containers/${vmid}/interfaces`); }
     catch { return []; }
   }, [node, vmid]);
+  const fetchStorages = useCallback(async () => {
+    try { return await apiFetch<StorageInfo[]>(`/nodes/${node}/storage`); }
+    catch { return []; }
+  }, [node]);
   const fetchSettings = useCallback(() => apiFetch<{ dns_domain: string }>("/settings"), []);
 
   const { data: ct, isLoading, refresh } = usePolling(fetchCT, 3000);
   const { data: config } = usePolling(fetchConfig, 10000);
   const { data: interfaces } = usePolling(fetchInterfaces, 5000);
+  const { data: storageList } = usePolling(fetchStorages, 30000);
   const { data: settings } = usePolling(fetchSettings, 60000);
   const buildJob = getJobByVmid(vmid);
 
@@ -134,23 +159,15 @@ export default function ContainerDetailPage() {
           <button disabled={!isRunning || actionLoading} onClick={() => setConfirmAction("stop")} className={`${btnBase} border-[#222222] text-[#e0e0e0] hover:border-red-400 hover:text-red-400`}><Square size={13} /> Stop</button>
           <button disabled={!isRunning || actionLoading} onClick={() => setConfirmAction("reboot")} className={`${btnBase} border-[#222222] text-[#e0e0e0] hover:border-yellow-400 hover:text-yellow-400`}><RotateCcw size={13} /> Reboot</button>
           <div className="w-px h-6 bg-[#222222] mx-1" />
+          <button disabled={actionLoading} onClick={() => setShowScale(true)} className={`${btnBase} border-[#222222] text-[#e0e0e0] hover:border-blue-400 hover:text-blue-400`}><SlidersHorizontal size={13} /> Scale</button>
+          <button disabled={actionLoading} onClick={() => setShowResizeDisk(true)} className={`${btnBase} border-[#222222] text-[#e0e0e0] hover:border-blue-400 hover:text-blue-400`}><HardDrive size={13} /> Resize</button>
+          <button disabled={actionLoading} onClick={() => setShowAddVolume(true)} className={`${btnBase} border-[#222222] text-[#e0e0e0] hover:border-blue-400 hover:text-blue-400`}><Plus size={13} /> Add Volume</button>
+          <div className="w-px h-6 bg-[#222222] mx-1" />
           <button disabled={isRunning || actionLoading} onClick={() => setConfirmAction("delete")} className={`${btnBase} border-[#222222] text-[#555555] hover:border-red-500 hover:bg-red-500/10 hover:text-red-400`}><Trash2 size={13} /></button>
         </div>
       </div>
 
-      {/* SSH connect banner */}
-      {isRunning && primaryIp && (
-        <div className="flex items-center gap-4 rounded-lg border border-[#00ff88]/20 bg-[#00ff88]/5 px-5 py-3">
-          <Terminal size={16} className="text-[#00ff88] shrink-0" />
-          <code className="text-sm font-mono text-[#00ff88]">
-            ssh {sshUser}@{primaryIp}
-          </code>
-          <CopyBtn text={`ssh ${sshUser}@${primaryIp}`} field="ssh-banner" copied={copiedField} onCopy={copy} />
-          <div className="flex-1" />
-          <code className="text-xs font-mono text-[#888888]">{primaryIp}</code>
-          <CopyBtn text={primaryIp} field="ip-banner" copied={copiedField} onCopy={copy} small />
-        </div>
-      )}
+
 
       {/* Two-column layout */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -295,6 +312,15 @@ export default function ContainerDetailPage() {
       <ConfirmDialog isOpen={confirmAction === "stop"} onClose={() => setConfirmAction(null)} onConfirm={() => handleAction("stop")} title="Confirm Stop" message="Are you sure you want to stop this container?" />
       <ConfirmDialog isOpen={confirmAction === "reboot"} onClose={() => setConfirmAction(null)} onConfirm={() => handleAction("reboot")} title="Confirm Reboot" message="Are you sure you want to reboot this container?" />
       <ConfirmDialog isOpen={confirmAction === "delete"} onClose={() => setConfirmAction(null)} onConfirm={() => handleAction("delete")} title="Delete Container" message={`Are you sure you want to permanently delete container ${ct.vmid} (${ct.name})? This action cannot be undone.`} />
+
+      <ScaleModal isOpen={showScale} onClose={() => setShowScale(false)} node={node} vmid={vmid} vmName={ct.name}
+        type="container" currentCores={ct.cpus || 1} currentMemoryBytes={ct.maxmem} isRunning={isRunning} onSuccess={refresh} />
+
+      <ResizeDiskModal isOpen={showResizeDisk} onClose={() => setShowResizeDisk(false)} node={node} vmid={vmid}
+        type="container" disks={parseContainerDisks(config)} onSuccess={refresh} />
+
+      <AddVolumeModal isOpen={showAddVolume} onClose={() => setShowAddVolume(false)} node={node} vmid={vmid}
+        type="container" storages={storageList ?? []} onSuccess={refresh} />
     </div>
   );
 }
