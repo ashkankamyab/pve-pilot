@@ -106,6 +106,29 @@ export interface NetworkInterface {
   "ip-addresses": IPAddress[];
 }
 
+export interface BackupInfo {
+  volid: string;
+  size: number;
+  ctime: number;
+  notes?: string;
+  vmid: number;
+  format: string;
+  content: string;
+}
+
+export interface BackupSchedule {
+  id: string;
+  type?: string;
+  vmid?: string;
+  storage: string;
+  schedule: string;
+  enabled: number;
+  comment?: string;
+  mode?: string;
+  compress?: string;
+  node?: string;
+}
+
 export interface ContainerConfig {
   hostname?: string;
   ostype?: string;

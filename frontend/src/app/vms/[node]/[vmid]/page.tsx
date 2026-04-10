@@ -12,12 +12,13 @@ import ReinstallModal from "@/components/vms/ReinstallModal";
 import ScaleModal from "@/components/shared/ScaleModal";
 import ResizeDiskModal from "@/components/shared/ResizeDiskModal";
 import AddVolumeModal from "@/components/shared/AddVolumeModal";
+import BackupModal from "@/components/shared/BackupModal";
 import { useJobs } from "@/contexts/JobsContext";
 import {
   ArrowLeft, Play, Square, RotateCcw, Trash2, RefreshCw,
   Cpu, MemoryStick, HardDrive, Clock, Network,
   KeyRound, User, Terminal, Eye, EyeOff, Copy, Check,
-  ArrowUpDown, ArrowDownUp, SlidersHorizontal, Plus,
+  ArrowUpDown, ArrowDownUp, SlidersHorizontal, Plus, History,
 } from "lucide-react";
 
 function parseDiskInfo(config: Record<string, unknown> | null): { name: string; currentSize: string; currentGB: number }[] {
@@ -47,6 +48,7 @@ export default function VMDetailPage() {
   const [showScale, setShowScale] = useState(false);
   const [showResizeDisk, setShowResizeDisk] = useState(false);
   const [showAddDisk, setShowAddDisk] = useState(false);
+  const [showBackups, setShowBackups] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
@@ -140,6 +142,8 @@ export default function VMDetailPage() {
           <button disabled={actionLoading} onClick={() => setShowScale(true)} className={`${btnBase} border-[#222222] text-[#e0e0e0] hover:border-blue-400 hover:text-blue-400`}><SlidersHorizontal size={13} /> Scale</button>
           <button disabled={actionLoading} onClick={() => setShowResizeDisk(true)} className={`${btnBase} border-[#222222] text-[#e0e0e0] hover:border-blue-400 hover:text-blue-400`}><HardDrive size={13} /> Resize</button>
           <button disabled={actionLoading} onClick={() => setShowAddDisk(true)} className={`${btnBase} border-[#222222] text-[#e0e0e0] hover:border-blue-400 hover:text-blue-400`}><Plus size={13} /> Add Disk</button>
+          <div className="w-px h-6 bg-[#222222] mx-1" />
+          <button disabled={actionLoading} onClick={() => setShowBackups(true)} className={`${btnBase} border-[#222222] text-[#e0e0e0] hover:border-purple-400 hover:text-purple-400`}><History size={13} /> Backups</button>
           <div className="w-px h-6 bg-[#222222] mx-1" />
           <button disabled={isRunning || actionLoading} onClick={() => setConfirmAction("delete")} className={`${btnBase} border-[#222222] text-[#555555] hover:border-red-500 hover:bg-red-500/10 hover:text-red-400`}><Trash2 size={13} /></button>
         </div>
@@ -309,6 +313,9 @@ export default function VMDetailPage() {
 
       <AddVolumeModal isOpen={showAddDisk} onClose={() => setShowAddDisk(false)} node={node} vmid={vmid}
         type="vm" storages={storageList ?? []} onSuccess={refresh} />
+
+      <BackupModal isOpen={showBackups} onClose={() => setShowBackups(false)} node={node} vmid={vmid}
+        vmName={vm.name} type="vm" onSuccess={refresh} />
     </div>
   );
 }

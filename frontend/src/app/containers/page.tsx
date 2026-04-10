@@ -87,7 +87,7 @@ export default function ContainersPage() {
           className="inline-flex items-center gap-2 whitespace-nowrap rounded-md bg-[#00ff88] px-4 py-2 text-sm font-medium text-[#0a0a0a] transition-colors hover:bg-[#00cc6a]"
         >
           <Plus size={16} />
-          Create from Template
+          Create Container
         </button>
       </div>
 

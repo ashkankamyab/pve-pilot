@@ -59,6 +59,7 @@ func main() {
 	handlers.JobStore = jobStore
 	handlers.NatsConn = nc
 	handlers.DNSDomain = cfg.DNSDomain
+	handlers.BackupStorage = cfg.BackupStorage
 
 	// Start worker
 	worker := jobs.NewWorker(nc, jobStore, handlers.PVE, hostSSH)
@@ -112,6 +113,20 @@ func main() {
 
 		api.GET("/templates", handlers.ListTemplates)
 		api.GET("/next-vmid", handlers.NextVMID)
+
+		// Backup & Restore
+		api.POST("/nodes/:node/vms/:vmid/backup", handlers.BackupVM)
+		api.POST("/nodes/:node/containers/:vmid/backup", handlers.BackupContainer)
+		api.GET("/nodes/:node/vms/:vmid/backups", handlers.ListVMBackups)
+		api.GET("/nodes/:node/containers/:vmid/backups", handlers.ListContainerBackups)
+		api.DELETE("/backups", handlers.DeleteBackupHandler)
+		api.POST("/nodes/:node/restore/vm", handlers.RestoreVMHandler)
+		api.POST("/nodes/:node/restore/container", handlers.RestoreContainerHandler)
+
+		// Backup Schedules
+		api.GET("/backup-schedules", handlers.ListBackupSchedulesHandler)
+		api.POST("/backup-schedules", handlers.CreateBackupScheduleHandler)
+		api.DELETE("/backup-schedules/:id", handlers.DeleteBackupScheduleHandler)
 
 		// Job endpoints
 		api.GET("/jobs", handlers.ListJobs)

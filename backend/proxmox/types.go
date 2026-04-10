@@ -234,3 +234,49 @@ type FilesystemInfo struct {
 type FilesystemDiskRef struct {
 	Dev string `json:"dev,omitempty"`
 }
+
+// BackupInfo represents a backup volume on a Proxmox storage
+type BackupInfo struct {
+	VolID   string `json:"volid"`
+	Size    int64  `json:"size"`
+	CTime   int64  `json:"ctime"`
+	Notes   string `json:"notes,omitempty"`
+	VMID    int    `json:"vmid,omitempty"`
+	Format  string `json:"format"`
+	Content string `json:"content"`
+}
+
+// BackupSchedule represents a Proxmox cluster backup schedule
+type BackupSchedule struct {
+	ID        string `json:"id"`
+	Type      string `json:"type,omitempty"`
+	VMID      string `json:"vmid,omitempty"`
+	Storage   string `json:"storage"`
+	Schedule  string `json:"schedule"`
+	Enabled   int    `json:"enabled"`
+	Comment   string `json:"comment,omitempty"`
+	Mode      string `json:"mode,omitempty"`
+	Compress  string `json:"compress,omitempty"`
+	Node      string `json:"node,omitempty"`
+	MailTo    string `json:"mailto,omitempty"`
+}
+
+// BackupScheduleRequest is used to create a new backup schedule
+type BackupScheduleRequest struct {
+	VMID     string `json:"vmid"`
+	Storage  string `json:"storage"`
+	Schedule string `json:"schedule"`
+	Mode     string `json:"mode"`
+	Compress string `json:"compress"`
+	Comment  string `json:"comment"`
+	Enabled  bool   `json:"enabled"`
+	Node     string `json:"node,omitempty"`
+}
+
+// RestoreRequest is used to restore a VM or container from a backup
+type RestoreRequest struct {
+	Archive string `json:"archive" binding:"required"`
+	VMID    int    `json:"vmid"`
+	Storage string `json:"storage"`
+	InPlace bool   `json:"in_place"`
+}
