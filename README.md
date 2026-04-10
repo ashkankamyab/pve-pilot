@@ -104,57 +104,76 @@ Restart with `docker compose up -d`.
 
 ## Architecture
 
-```
-                    ┌─────────────────┐
-                    │    Browser      │
-                    └────────┬────────┘
-                             │ REST + SSE
-                    ┌────────▼────────┐
-                    │   Next.js 16    │ :3000
-                    │   (Frontend)    │
-                    └────────┬────────┘
-                             │ REST
-                    ┌────────▼────────┐
-                    │   Go / Gin      │ :8080
-                    │   (Backend)     │
-                    └──┬─────────┬────┘
-                       │         │
-              ┌────────▼──┐  ┌───▼──────────┐
-              │   NATS    │  │  Proxmox API │ :8006
-              │   :4222   │  │  (token auth)│
-              └────────┬──┘  └──────────────┘
-                       │
-              ┌────────▼──────────┐
-              │  Worker           │
-              │  (in-process)     │
-              │  jobs.provision   │
-              └───────────────────┘
+```mermaid
+graph TD
+    Browser["🌐 Browser"]
+    Frontend["⚡ Next.js 16<br/><i>:3000</i>"]
+    Backend["🔧 Go / Gin<br/><i>:8080</i>"]
+    NATS["📨 NATS<br/><i>:4222</i>"]
+    Worker["⚙️ Worker<br/><i>in-process</i>"]
+    PVE["🖥️ Proxmox API<br/><i>:8006</i>"]
+    SSH["🔑 SSH<br/><i>pct exec</i>"]
+
+    Browser -->|"REST + SSE"| Frontend
+    Frontend -->|"REST"| Backend
+    Backend -->|"Pub/Sub"| NATS
+    Backend -->|"Token Auth"| PVE
+    NATS -->|"jobs.provision"| Worker
+    Worker -->|"Clone · Config · Start"| PVE
+    Worker -.->|"LXC credentials"| SSH
+    SSH -.->|"pct exec"| PVE
+
+    style Browser fill:#0a0a0a,stroke:#00ff88,color:#e0e0e0
+    style Frontend fill:#161616,stroke:#00ff88,color:#e0e0e0
+    style Backend fill:#161616,stroke:#00ff88,color:#e0e0e0
+    style NATS fill:#161616,stroke:#222222,color:#888888
+    style Worker fill:#161616,stroke:#222222,color:#888888
+    style PVE fill:#0a0a0a,stroke:#00ff88,color:#00ff88
+    style SSH fill:#0a0a0a,stroke:#222222,color:#888888
 ```
 
-| Service | Image | Port | Purpose |
-|---------|-------|------|---------|
-| **nats** | `nats:2-alpine` | 4222, 8222 | Message queue (JetStream) |
-| **backend** | Go 1.25 + Gin | 8080 | REST API, NATS worker, SSE |
-| **frontend** | Next.js 16 | 3000 | Dashboard UI |
+### Services
+
+| | Service | Stack | Port | Role |
+|:--|---------|-------|:----:|------|
+| 📨 | **nats** | `nats:2-alpine` | `4222` `8222` | Message queue with JetStream |
+| 🔧 | **backend** | Go 1.25 &bull; Gin &bull; NATS client | `8080` | REST API, async worker, SSE streams |
+| ⚡ | **frontend** | Next.js 16 &bull; React 19 &bull; Tailwind v4 | `3000` | Dashboard UI |
 
 ---
 
 ## Configuration
 
+> Copy `.env.example` to `.env` and fill in your values. See the file for inline documentation.
+
+### Proxmox Connection
+
 | Variable | Required | Default | Description |
-|----------|:--------:|---------|-------------|
-| `PROXMOX_URL` | **Yes** | &mdash; | Proxmox API URL (`https://host:8006`) |
-| `PROXMOX_TOKEN_ID` | **Yes** | &mdash; | API token ID (`user@realm!tokenid`) |
-| `PROXMOX_TOKEN_SECRET` | **Yes** | &mdash; | API token secret (UUID) |
+|:---------|:--------:|:--------|:------------|
+| `PROXMOX_URL` | ✅ | &mdash; | Proxmox API URL &mdash; `https://host:8006` |
+| `PROXMOX_TOKEN_ID` | ✅ | &mdash; | API token ID &mdash; `user@realm!tokenid` |
+| `PROXMOX_TOKEN_SECRET` | ✅ | &mdash; | API token secret (UUID) |
 | `INSECURE_TLS` | | `true` | Skip TLS verification for self-signed PVE certs |
-| `FRONTEND_URL` | | `http://localhost:3000` | Frontend URL for CORS |
-| `NEXT_PUBLIC_API_URL` | | `http://localhost:8080` | API URL for frontend (build-time) |
-| `DNS_DOMAIN` | | &mdash; | Search domain for cloud-init (`example.com`) |
-| `BACKUP_STORAGE` | | `nfs-drive` | Proxmox storage pool for backups |
-| `PROXMOX_SSH_HOST` | | &mdash; | Proxmox host for LXC `pct exec` |
+
+### Application
+
+| Variable | Required | Default | Description |
+|:---------|:--------:|:--------|:------------|
+| `FRONTEND_URL` | | `http://localhost:3000` | Frontend origin for CORS |
+| `NEXT_PUBLIC_API_URL` | | `http://localhost:8080` | API URL used by frontend at build time |
+| `DNS_DOMAIN` | | &mdash; | Search domain set on VMs via cloud-init |
+| `BACKUP_STORAGE` | | `nfs-drive` | Proxmox storage pool for vzdump backups |
+
+### LXC Credential Injection <sub>(optional)</sub>
+
+> Required only if you want to set passwords, SSH keys, or run user-data scripts inside **LXC containers**. QEMU VMs use the guest agent instead.
+
+| Variable | Required | Default | Description |
+|:---------|:--------:|:--------|:------------|
+| `PROXMOX_SSH_HOST` | | &mdash; | Proxmox host IP or hostname |
 | `PROXMOX_SSH_PORT` | | `22` | SSH port |
-| `PROXMOX_SSH_USER` | | `root` | SSH user |
-| `PROXMOX_SSH_KEY_HOST_PATH` | | &mdash; | Host path to SSH private key (mounted into container) |
+| `PROXMOX_SSH_USER` | | `root` | SSH user with `pct exec` access |
+| `PROXMOX_SSH_KEY_HOST_PATH` | | &mdash; | Path on Docker host to SSH private key (mounted read-only) |
 
 ---
 
