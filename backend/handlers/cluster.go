@@ -9,7 +9,8 @@ import (
 // Settings returns public configuration values for the frontend.
 func Settings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"dns_domain": DNSDomain,
+		"dns_domain":      DNSDomain,
+		"default_gateway": DefaultGateway,
 	})
 }
 

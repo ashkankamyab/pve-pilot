@@ -75,9 +75,9 @@ func (w *Worker) provisionVM(p ProvisionPayload) {
 
 	// Step 2: Configure cloud-init
 	w.store.UpdateStep(id, StepConfiguring, StatusRunning)
-	if p.CIUser != "" || p.Password != "" || p.SSHKeys != "" || p.DNSDomain != "" {
-		log.Printf("worker [%s]: configuring cloud-init for VM %d (user=%s, domain=%s)", id, p.NewVMID, p.CIUser, p.DNSDomain)
-		if err := w.pve.ConfigureCloudInit(targetNode, p.NewVMID, p.CIUser, p.Password, p.SSHKeys, p.DNSDomain); err != nil {
+	if p.CIUser != "" || p.Password != "" || p.SSHKeys != "" || p.DNSDomain != "" || p.IPMode == "static" {
+		log.Printf("worker [%s]: configuring cloud-init for VM %d (user=%s, domain=%s, ip_mode=%s)", id, p.NewVMID, p.CIUser, p.DNSDomain, p.IPMode)
+		if err := w.pve.ConfigureCloudInit(targetNode, p.NewVMID, p.CIUser, p.Password, p.SSHKeys, p.DNSDomain, p.IPMode, p.StaticIP, p.StaticGW, p.StaticSubnet); err != nil {
 			log.Printf("worker [%s]: cloud-init config failed for VM %d: %v", id, p.NewVMID, err)
 		}
 	}
@@ -192,6 +192,12 @@ func (w *Worker) provisionContainer(p ProvisionPayload) {
 	log.Printf("worker [%s]: configuring container %d hostname=%s", id, p.NewVMID, p.Name)
 	if err := w.pve.ConfigureContainerHostname(targetNode, p.NewVMID, p.Name); err != nil {
 		log.Printf("worker [%s]: container hostname config failed: %v", id, err)
+	}
+	if p.IPMode == "static" && p.StaticIP != "" {
+		log.Printf("worker [%s]: setting container %d static IP %s/%d gw %s", id, p.NewVMID, p.StaticIP, p.StaticSubnet, p.StaticGW)
+		if err := w.pve.ConfigureContainerNetwork(targetNode, p.NewVMID, p.StaticIP, p.StaticGW, p.StaticSubnet); err != nil {
+			log.Printf("worker [%s]: container network config failed: %v", id, err)
+		}
 	}
 	if p.Cores > 0 || p.Memory > 0 {
 		log.Printf("worker [%s]: setting container %d resources cores=%d memory=%dMB", id, p.NewVMID, p.Cores, p.Memory)

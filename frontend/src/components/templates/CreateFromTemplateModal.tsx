@@ -7,7 +7,7 @@ import { TemplateInfo, JobStep, StorageInfo } from "@/lib/types";
 import { useJobs } from "@/contexts/JobsContext";
 import { detectDistro, DISTRO_USERS } from "@/components/shared/DistroIcon";
 import TemplateSelect from "@/components/shared/TemplateSelect";
-import { Terminal, Copy, Check, Plus, X, HardDrive } from "lucide-react";
+import { Terminal, Copy, Check, Plus, X, HardDrive, Network } from "lucide-react";
 
 interface CreateFromTemplateModalProps {
   isOpen: boolean;
@@ -91,6 +91,10 @@ export default function CreateFromTemplateModal({
   const [diskSize, setDiskSize] = useState(defaultDisk);
   const [extraVolumes, setExtraVolumes] = useState<ExtraVolume[]>([]);
   const [userData, setUserData] = useState("");
+  const [ipMode, setIpMode] = useState<"dhcp" | "static">("dhcp");
+  const [staticIP, setStaticIP] = useState("");
+  const [gateway, setGateway] = useState("");
+  const [subnet, setSubnet] = useState("24");
   const [error, setError] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
@@ -105,6 +109,9 @@ export default function CreateFromTemplateModal({
   useEffect(() => {
     if (!isOpen) return;
     apiFetch<{ vmid: number }>("/next-vmid").then((r) => setNextVmid(r.vmid)).catch(() => {});
+    apiFetch<{ default_gateway: string }>("/settings").then((r) => {
+      if (r.default_gateway && !gateway) setGateway(r.default_gateway);
+    }).catch(() => {});
   }, [isOpen]);
 
   useEffect(() => {
@@ -221,6 +228,10 @@ export default function CreateFromTemplateModal({
           disk_size: parseInt(diskSize, 10),
           extra_volumes: extraVols.length > 0 ? extraVols : undefined,
           user_data: userData || undefined,
+          ip_mode: ipMode,
+          ip: ipMode === "static" ? staticIP : undefined,
+          gateway: ipMode === "static" ? gateway : undefined,
+          subnet: ipMode === "static" ? parseInt(subnet, 10) : undefined,
         }
       );
 
@@ -260,8 +271,9 @@ export default function CreateFromTemplateModal({
   const resetForm = useCallback(() => {
     setSelectedTemplateId(""); setName(""); setTargetNode(""); setStorage(""); setCiUser("");
     setCores(defaultCores); setMemory(defaultMemory); setPasswordMode("set"); setPassword(""); setGeneratedPassword("");
-    setSshKey(""); setDiskSize(defaultDisk); setExtraVolumes([]); setUserData(""); setError(null); setActiveJobId(null);
-    setSubmitting(false); setNextVmid(null); setStorages([]);
+    setSshKey(""); setDiskSize(defaultDisk); setExtraVolumes([]); setUserData("");
+    setIpMode("dhcp"); setStaticIP(""); setSubnet("24");
+    setError(null); setActiveJobId(null); setSubmitting(false); setNextVmid(null); setStorages([]);
   }, [defaultCores, defaultMemory, defaultDisk]);
 
   const handleClose = () => { if (isTerminal) resetForm(); onClose(); };
@@ -399,6 +411,39 @@ export default function CreateFromTemplateModal({
                   <Plus size={12} /> Add data volume
                 </button>
               </>
+            )}
+          </div>
+
+          {/* Network */}
+          <div className="flex flex-col gap-3 rounded-lg border border-[#222222] bg-[#111111] p-3">
+            <div className="flex items-center gap-2 text-xs text-[#888888]">
+              <Network size={12} /> Network
+            </div>
+            <div className="flex gap-3">
+              <label className="flex items-center gap-1.5">
+                <input type="radio" checked={ipMode === "dhcp"} onChange={() => setIpMode("dhcp")} className="accent-[#00ff88]" />
+                <span className="text-sm text-[#e0e0e0]">DHCP</span>
+              </label>
+              <label className="flex items-center gap-1.5">
+                <input type="radio" checked={ipMode === "static"} onChange={() => setIpMode("static")} className="accent-[#00ff88]" />
+                <span className="text-sm text-[#e0e0e0]">Static IP</span>
+              </label>
+            </div>
+            {ipMode === "static" && (
+              <div className="grid grid-cols-3 gap-2">
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] text-[#555555]">IP Address</span>
+                  <input type="text" value={staticIP} onChange={(e) => setStaticIP(e.target.value)} className={inputClass} placeholder="192.168.2.100" />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] text-[#555555]">Gateway</span>
+                  <input type="text" value={gateway} onChange={(e) => setGateway(e.target.value)} className={inputClass} placeholder="192.168.2.1" />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] text-[#555555]">Subnet (CIDR)</span>
+                  <input type="number" min="1" max="32" value={subnet} onChange={(e) => setSubnet(e.target.value)} className={inputClass} placeholder="24" />
+                </label>
+              </div>
             )}
           </div>
 

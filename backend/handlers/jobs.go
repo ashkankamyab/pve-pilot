@@ -124,6 +124,10 @@ func submitProvisionJob(jobType string, sourceNode string, sourceVMID int, targe
 		ExtraVolumes: req.ExtraVolumes,
 		UserData:     req.UserData,
 		DNSDomain:    req.DNSDomain,
+		IPMode:       req.IPMode,
+		StaticIP:     req.StaticIP,
+		StaticGW:     req.StaticGW,
+		StaticSubnet: req.StaticSubnet,
 		FullClone:    req.FullClone,
 	}
 	JobStore.Create(job)

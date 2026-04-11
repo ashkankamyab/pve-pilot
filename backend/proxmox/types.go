@@ -178,7 +178,11 @@ type ProvisionRequest struct {
 	Memory       int           `json:"memory,omitempty"` // in MB
 	DiskSize     int           `json:"disk_size,omitempty"` // in GB
 	ExtraVolumes []ExtraVolume `json:"extra_volumes,omitempty"`
-	UserData     string        `json:"user_data,omitempty"` // cloud-init user-data script
+	UserData     string        `json:"user_data,omitempty"`
+	IPMode       string        `json:"ip_mode,omitempty"`  // "dhcp" or "static"
+	IP           string        `json:"ip,omitempty"`       // e.g. "192.168.2.100"
+	Gateway      string        `json:"gateway,omitempty"`  // e.g. "192.168.2.1"
+	Subnet       int           `json:"subnet,omitempty"`   // CIDR e.g. 24
 }
 
 // ScaleRequest sets cores and/or memory on a VM or container

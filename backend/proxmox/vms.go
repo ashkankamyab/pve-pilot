@@ -59,8 +59,8 @@ func (c *Client) CloneVM(node string, vmid int, newID int, name, target, storage
 	return c.postForm(fmt.Sprintf("nodes/%s/qemu/%d/clone", node, vmid), params)
 }
 
-// ConfigureCloudInit sets cloud-init user, password, SSH keys, and DNS domain on a VM
-func (c *Client) ConfigureCloudInit(node string, vmid int, ciuser, password, sshkeys, searchdomain string) error {
+// ConfigureCloudInit sets cloud-init user, password, SSH keys, DNS domain, and IP config on a VM
+func (c *Client) ConfigureCloudInit(node string, vmid int, ciuser, password, sshkeys, searchdomain, ipMode, ip, gateway string, subnet int) error {
 	params := map[string]string{}
 	if ciuser != "" {
 		params["ciuser"] = ciuser
@@ -77,6 +77,17 @@ func (c *Client) ConfigureCloudInit(node string, vmid int, ciuser, password, ssh
 	}
 	if searchdomain != "" {
 		params["searchdomain"] = searchdomain
+	}
+	if ipMode == "static" && ip != "" {
+		cidr := 24
+		if subnet > 0 {
+			cidr = subnet
+		}
+		ipconf := fmt.Sprintf("ip=%s/%d", ip, cidr)
+		if gateway != "" {
+			ipconf += fmt.Sprintf(",gw=%s", gateway)
+		}
+		params["ipconfig0"] = ipconf
 	}
 	if len(params) == 0 {
 		return nil

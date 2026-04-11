@@ -4,3 +4,4 @@ import "github.com/ashkankamyab/pve-pilot/proxmox"
 
 var PVE *proxmox.Client
 var DNSDomain string
+var DefaultGateway string

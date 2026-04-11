@@ -62,6 +62,10 @@ type Job struct {
 	ExtraVolumes []proxmox.ExtraVolume `json:"extra_volumes,omitempty"`
 	UserData     string                `json:"-"`
 	DNSDomain    string                `json:"dns_domain,omitempty"`
+	IPMode       string                `json:"ip_mode,omitempty"`
+	StaticIP     string                `json:"static_ip,omitempty"`
+	StaticGW     string                `json:"static_gw,omitempty"`
+	StaticSubnet int                   `json:"static_subnet,omitempty"`
 	FullClone    bool                  `json:"full_clone"`
 
 	IPAddress string `json:"ip_address,omitempty"`
@@ -85,6 +89,10 @@ type ProvisionPayload struct {
 	ExtraVolumes []proxmox.ExtraVolume `json:"extra_volumes,omitempty"`
 	UserData     string                `json:"user_data,omitempty"`
 	DNSDomain    string                `json:"dns_domain,omitempty"`
+	IPMode       string                `json:"ip_mode,omitempty"`
+	StaticIP     string                `json:"static_ip,omitempty"`
+	StaticGW     string                `json:"static_gw,omitempty"`
+	StaticSubnet int                   `json:"static_subnet,omitempty"`
 	FullClone    bool                  `json:"full_clone"`
 }
 

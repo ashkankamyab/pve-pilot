@@ -175,6 +175,10 @@ func ProvisionContainer(c *gin.Context) {
 		ExtraVolumes: req.ExtraVolumes,
 		UserData:     req.UserData,
 		DNSDomain:    DNSDomain,
+		IPMode:       req.IPMode,
+		StaticIP:     req.IP,
+		StaticGW:     req.Gateway,
+		StaticSubnet: req.Subnet,
 		FullClone:    full,
 	}
 

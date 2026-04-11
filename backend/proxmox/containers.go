@@ -96,6 +96,113 @@ func (c *Client) ConfigureContainerHostname(node string, vmid int, hostname stri
 	return err
 }
 
+// ConfigureContainerNetwork sets a static IP on an LXC container's net0.
+// Reads the current net0 value, replaces ip= and gw= parts, writes it back.
+func (c *Client) ConfigureContainerNetwork(node string, vmid int, ip, gateway string, subnet int) error {
+	// Read current config to get net0
+	cfg, err := c.GetContainerConfig(node, vmid)
+	if err != nil {
+		return fmt.Errorf("reading container config: %w", err)
+	}
+
+	net0, ok := cfg["net0"]
+	if !ok {
+		return fmt.Errorf("container has no net0 interface")
+	}
+
+	net0Str := fmt.Sprintf("%v", net0)
+
+	// Parse net0 into key=value parts
+	cidr := 24
+	if subnet > 0 {
+		cidr = subnet
+	}
+
+	// Remove existing ip= and gw= parts
+	var parts []string
+	for _, part := range splitNet0(net0Str) {
+		key := part
+		if idx := indexOf(part, '='); idx >= 0 {
+			key = part[:idx]
+		}
+		if key != "ip" && key != "gw" {
+			parts = append(parts, part)
+		}
+	}
+
+	// Add new ip and gw
+	parts = append(parts, fmt.Sprintf("ip=%s/%d", ip, cidr))
+	if gateway != "" {
+		parts = append(parts, fmt.Sprintf("gw=%s", gateway))
+	}
+
+	newNet0 := joinParts(parts)
+	params := map[string]string{
+		"net0": newNet0,
+	}
+	_, err = c.putForm(fmt.Sprintf("nodes/%s/lxc/%d/config", node, vmid), params)
+	return err
+}
+
+func splitNet0(s string) []string {
+	var parts []string
+	for _, p := range splitComma(s) {
+		p = trimSpace(p)
+		if p != "" {
+			parts = append(parts, p)
+		}
+	}
+	return parts
+}
+
+func splitComma(s string) []string {
+	result := []string{}
+	current := ""
+	for _, ch := range s {
+		if ch == ',' {
+			result = append(result, current)
+			current = ""
+		} else {
+			current += string(ch)
+		}
+	}
+	if current != "" {
+		result = append(result, current)
+	}
+	return result
+}
+
+func indexOf(s string, ch byte) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == ch {
+			return i
+		}
+	}
+	return -1
+}
+
+func trimSpace(s string) string {
+	start, end := 0, len(s)
+	for start < end && (s[start] == ' ' || s[start] == '\t') {
+		start++
+	}
+	for end > start && (s[end-1] == ' ' || s[end-1] == '\t') {
+		end--
+	}
+	return s[start:end]
+}
+
+func joinParts(parts []string) string {
+	result := ""
+	for i, p := range parts {
+		if i > 0 {
+			result += ","
+		}
+		result += p
+	}
+	return result
+}
+
 // ResizeContainerDisk resizes a disk on an LXC container. Returns UPID.
 func (c *Client) ResizeContainerDisk(node string, vmid int, disk string, size string) (string, error) {
 	params := map[string]string{

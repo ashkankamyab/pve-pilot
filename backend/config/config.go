@@ -15,6 +15,7 @@ type Config struct {
 	NatsURL            string
 	DNSDomain          string
 	BackupStorage      string
+	DefaultGateway     string
 	ProxmoxSSHHost     string
 	ProxmoxSSHPort     string
 	ProxmoxSSHUser     string
@@ -34,6 +35,7 @@ func Load() Config {
 		NatsURL:            getEnv("NATS_URL", "nats://localhost:4222"),
 		DNSDomain:          getEnv("DNS_DOMAIN", ""),
 		BackupStorage:      getEnv("BACKUP_STORAGE", "nfs-drive"),
+		DefaultGateway:     getEnv("DEFAULT_GATEWAY", "192.168.2.1"),
 		ProxmoxSSHHost:     getEnv("PROXMOX_SSH_HOST", ""),
 		ProxmoxSSHPort:     getEnv("PROXMOX_SSH_PORT", "22"),
 		ProxmoxSSHUser:     getEnv("PROXMOX_SSH_USER", "root"),

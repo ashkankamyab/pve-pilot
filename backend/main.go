@@ -59,6 +59,7 @@ func main() {
 	handlers.JobStore = jobStore
 	handlers.NatsConn = nc
 	handlers.DNSDomain = cfg.DNSDomain
+	handlers.DefaultGateway = cfg.DefaultGateway
 	handlers.BackupStorage = cfg.BackupStorage
 
 	// Start worker
