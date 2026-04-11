@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import Modal from "./Modal";
 import { apiPost, apiDelete, apiFetch, formatBytes } from "@/lib/api";
-import { BackupInfo, BackupSchedule } from "@/lib/types";
+import { BackupInfo, BackupSchedule, Job } from "@/lib/types";
+import { useJobs } from "@/contexts/JobsContext";
 import { Download, RotateCcw, Trash2, Clock, AlertTriangle, Check, Calendar, ExternalLink } from "lucide-react";
 import Link from "next/link";
 
@@ -39,6 +40,7 @@ function formatAge(ts: number): string {
 export default function BackupModal({
   isOpen, onClose, node, vmid, vmName, type, onSuccess,
 }: BackupModalProps) {
+  const { addJob } = useJobs();
   const prefix = type === "vm" ? "vms" : "containers";
   const noun = type === "vm" ? "VM" : "container";
 
@@ -87,19 +89,29 @@ export default function BackupModal({
   const handleBackupNow = async () => {
     setError(null);
     setSuccess(null);
-    setWorking(true);
-    setWorkingText(`Backing up ${vmName}...`);
 
     try {
-      await apiPost(`/nodes/${node}/${prefix}/${vmid}/backup`, { notes: backupNotes || undefined });
-      setSuccess("Backup completed successfully.");
+      const resp = await apiPost<{ job_id: string }>(`/nodes/${node}/${prefix}/${vmid}/backup`, { notes: backupNotes || undefined });
+      const job: Job = {
+        id: resp.job_id,
+        type: type === "vm" ? "backup_vm" : "backup_container",
+        status: "pending",
+        step: "",
+        progress: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_node: node,
+        source_vmid: vmid,
+        target_node: node,
+        new_vmid: vmid,
+        name: vmName,
+        full_clone: false,
+      };
+      addJob(job);
+      setSuccess("Backup job started — track progress in the Jobs panel.");
       setBackupNotes("");
-      await fetchBackups();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Backup failed");
-    } finally {
-      setWorking(false);
-      setWorkingText("");
     }
   };
 
@@ -124,30 +136,41 @@ export default function BackupModal({
     if (!restoreTarget) return;
     setError(null);
     setSuccess(null);
-    setWorking(true);
 
     const restoreType = type === "vm" ? "vm" : "container";
-    setWorkingText(restoreInPlace ? `Restoring ${vmName} in-place...` : `Restoring as new ${noun}...`);
 
     try {
-      const resp = await apiPost<{ status: string; vmid: number }>(`/nodes/${node}/restore/${restoreType}`, {
+      const resp = await apiPost<{ job_id: string; vmid: number }>(`/nodes/${node}/restore/${restoreType}`, {
         archive: restoreTarget.volid,
         vmid: restoreInPlace ? vmid : 0,
         in_place: restoreInPlace,
       });
+      const targetVmid = resp.vmid || vmid;
+      const job: Job = {
+        id: resp.job_id,
+        type: type === "vm" ? "restore_vm" : "restore_container",
+        status: "pending",
+        step: "",
+        progress: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_node: node,
+        source_vmid: vmid,
+        target_node: node,
+        new_vmid: targetVmid,
+        name: vmName,
+        full_clone: false,
+      };
+      addJob(job);
       if (restoreInPlace) {
-        setSuccess(`${vmName} restored in-place from backup.`);
-        onSuccess();
+        setSuccess(`Restore job started for ${vmName} — track progress in the Jobs panel.`);
       } else {
-        setRestoredNewVmid(resp.vmid);
-        setSuccess(`Restored as a new ${noun} (ID ${resp.vmid}).`);
+        setRestoredNewVmid(targetVmid);
+        setSuccess(`Restore job started as new ${noun} (ID ${targetVmid}) — track progress in the Jobs panel.`);
       }
       setRestoreTarget(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Restore failed");
-    } finally {
-      setWorking(false);
-      setWorkingText("");
     }
   };
 

@@ -153,3 +153,84 @@ func submitProvisionJob(jobType string, sourceNode string, sourceVMID int, targe
 
 // StepNone is used for initial pending state before any step runs.
 const StepNone jobs.StepName = ""
+
+// submitBackupJob creates a backup job, stores it, and publishes to NATS.
+func submitBackupJob(jobType, node string, vmid int, name, storage, notes string) (string, error) {
+	id := uuid.New().String()
+
+	job := &jobs.Job{
+		ID:         id,
+		Type:       "backup_" + jobType,
+		Status:     jobs.StatusPending,
+		Step:       StepNone,
+		Progress:   0,
+		SourceNode: node,
+		SourceVMID: vmid,
+		NewVMID:    vmid,
+		Name:       name,
+	}
+	JobStore.Create(job)
+
+	payload := jobs.BackupPayload{
+		JobID:   id,
+		Type:    jobType,
+		Node:    node,
+		VMID:    vmid,
+		Name:    name,
+		Storage: storage,
+		Notes:   notes,
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("marshaling payload: %w", err)
+	}
+
+	if err := NatsConn.Publish(jobs.SubjectBackup, data); err != nil {
+		JobStore.SetError(id, fmt.Sprintf("failed to queue job: %v", err))
+		return "", fmt.Errorf("publishing to NATS: %w", err)
+	}
+
+	return id, nil
+}
+
+// submitRestoreJob creates a restore job, stores it, and publishes to NATS.
+func submitRestoreJob(jobType, node string, vmid int, name, archive, storage string, inPlace bool) (string, error) {
+	id := uuid.New().String()
+
+	job := &jobs.Job{
+		ID:         id,
+		Type:       "restore_" + jobType,
+		Status:     jobs.StatusPending,
+		Step:       StepNone,
+		Progress:   0,
+		SourceNode: node,
+		SourceVMID: vmid,
+		NewVMID:    vmid,
+		Name:       name,
+	}
+	JobStore.Create(job)
+
+	payload := jobs.RestorePayload{
+		JobID:   id,
+		Type:    jobType,
+		Node:    node,
+		VMID:    vmid,
+		Name:    name,
+		Archive: archive,
+		Storage: storage,
+		InPlace: inPlace,
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("marshaling payload: %w", err)
+	}
+
+	if err := NatsConn.Publish(jobs.SubjectRestore, data); err != nil {
+		JobStore.SetError(id, fmt.Sprintf("failed to queue job: %v", err))
+		return "", fmt.Errorf("publishing to NATS: %w", err)
+	}
+
+	return id, nil
+}

@@ -11,10 +11,26 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// vmNameForBackup fetches the VM/container name for job display.
+func vmNameForBackup(node string, vmid int, vmType string) string {
+	if vmType == "container" {
+		st, err := PVE.GetContainerStatus(node, vmid)
+		if err == nil && st != nil {
+			return st.Name
+		}
+	} else {
+		st, err := PVE.GetVMStatus(node, vmid)
+		if err == nil && st != nil {
+			return st.Name
+		}
+	}
+	return fmt.Sprintf("%d", vmid)
+}
+
 // BackupStorage is the target storage for all backups (e.g. "nfs-drive").
 var BackupStorage string
 
-// BackupVM triggers an instant backup of a QEMU VM.
+// BackupVM triggers an async backup of a QEMU VM via NATS job.
 func BackupVM(c *gin.Context) {
 	node := c.Param("node")
 	vmid, err := strconv.Atoi(c.Param("vmid"))
@@ -28,22 +44,17 @@ func BackupVM(c *gin.Context) {
 	}
 	_ = c.ShouldBindJSON(&body)
 
-	upid, err := PVE.Backup(node, vmid, BackupStorage, "snapshot", "zstd", body.Notes)
+	name := vmNameForBackup(node, vmid, "vm")
+	jobID, err := submitBackupJob("vm", node, vmid, name, BackupStorage, body.Notes)
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Wait for backup to complete (can take minutes)
-	if err := PVE.WaitForTask(node, upid, 10*time.Minute); err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("backup failed: %v", err)})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "upid": upid})
+	c.JSON(http.StatusAccepted, gin.H{"job_id": jobID})
 }
 
-// BackupContainer triggers an instant backup of an LXC container.
+// BackupContainer triggers an async backup of an LXC container via NATS job.
 func BackupContainer(c *gin.Context) {
 	node := c.Param("node")
 	vmid, err := strconv.Atoi(c.Param("vmid"))
@@ -57,18 +68,14 @@ func BackupContainer(c *gin.Context) {
 	}
 	_ = c.ShouldBindJSON(&body)
 
-	upid, err := PVE.Backup(node, vmid, BackupStorage, "snapshot", "zstd", body.Notes)
+	name := vmNameForBackup(node, vmid, "container")
+	jobID, err := submitBackupJob("container", node, vmid, name, BackupStorage, body.Notes)
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	if err := PVE.WaitForTask(node, upid, 10*time.Minute); err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("backup failed: %v", err)})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "upid": upid})
+	c.JSON(http.StatusAccepted, gin.H{"job_id": jobID})
 }
 
 // ListVMBackups lists backups for a specific VM.
@@ -156,7 +163,7 @@ func nextAvailableVMID() (int, error) {
 	return maxID + 1, nil
 }
 
-// RestoreVMHandler restores a QEMU VM from a backup.
+// RestoreVMHandler restores a QEMU VM from a backup via async NATS job.
 func RestoreVMHandler(c *gin.Context) {
 	node := c.Param("node")
 
@@ -178,58 +185,22 @@ func RestoreVMHandler(c *gin.Context) {
 		vmid = next
 	}
 
-	// In-place: stop + delete existing, then restore to same VMID
-	if req.InPlace && req.VMID > 0 {
-		// Stop if running
-		status, _ := PVE.GetVMStatus(node, vmid)
-		if status != nil && status.Status == "running" {
-			stopUpid, err := PVE.StopVM(node, vmid)
-			if err == nil {
-				_ = PVE.WaitForTask(node, stopUpid, 60*time.Second)
-			}
-			// Wait for stopped
-			for i := 0; i < 15; i++ {
-				s, _ := PVE.GetVMStatus(node, vmid)
-				if s != nil && s.Status == "stopped" {
-					break
-				}
-				time.Sleep(2 * time.Second)
-			}
-		}
-		// Delete
-		delUpid, err := PVE.DeleteVM(node, vmid)
-		if err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("delete old VM failed: %v", err)})
-			return
-		}
-		if err := PVE.WaitForTask(node, delUpid, 60*time.Second); err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("delete task failed: %v", err)})
-			return
-		}
-		time.Sleep(3 * time.Second) // let Proxmox release resources
-	}
-
-	// Restore
 	storage := req.Storage
 	if storage == "" {
 		storage = BackupStorage
 	}
 
-	upid, err := PVE.RestoreVM(node, req.Archive, vmid, storage)
+	name := vmNameForBackup(node, vmid, "vm")
+	jobID, err := submitRestoreJob("vm", node, vmid, name, req.Archive, storage, req.InPlace)
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("restore failed: %v", err)})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	if err := PVE.WaitForTask(node, upid, 10*time.Minute); err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("restore task failed: %v", err)})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"status": "restored", "vmid": vmid})
+	c.JSON(http.StatusAccepted, gin.H{"job_id": jobID, "vmid": vmid})
 }
 
-// RestoreContainerHandler restores an LXC container from a backup.
+// RestoreContainerHandler restores an LXC container from a backup via async NATS job.
 func RestoreContainerHandler(c *gin.Context) {
 	node := c.Param("node")
 
@@ -251,51 +222,19 @@ func RestoreContainerHandler(c *gin.Context) {
 		vmid = next
 	}
 
-	// In-place: stop + delete existing
-	if req.InPlace && req.VMID > 0 {
-		status, _ := PVE.GetContainerStatus(node, vmid)
-		if status != nil && status.Status == "running" {
-			stopUpid, err := PVE.StopContainer(node, vmid)
-			if err == nil {
-				_ = PVE.WaitForTask(node, stopUpid, 60*time.Second)
-			}
-			for i := 0; i < 15; i++ {
-				s, _ := PVE.GetContainerStatus(node, vmid)
-				if s != nil && s.Status == "stopped" {
-					break
-				}
-				time.Sleep(2 * time.Second)
-			}
-		}
-		delUpid, err := PVE.DeleteContainer(node, vmid)
-		if err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("delete old container failed: %v", err)})
-			return
-		}
-		if err := PVE.WaitForTask(node, delUpid, 60*time.Second); err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("delete task failed: %v", err)})
-			return
-		}
-		time.Sleep(3 * time.Second)
-	}
-
 	storage := req.Storage
 	if storage == "" {
 		storage = BackupStorage
 	}
 
-	upid, err := PVE.RestoreContainer(node, req.Archive, vmid, storage)
+	name := vmNameForBackup(node, vmid, "container")
+	jobID, err := submitRestoreJob("container", node, vmid, name, req.Archive, storage, req.InPlace)
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("restore failed: %v", err)})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	if err := PVE.WaitForTask(node, upid, 10*time.Minute); err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("restore task failed: %v", err)})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"status": "restored", "vmid": vmid})
+	c.JSON(http.StatusAccepted, gin.H{"job_id": jobID, "vmid": vmid})
 }
 
 // ListBackupSchedulesHandler returns all cluster backup schedules.

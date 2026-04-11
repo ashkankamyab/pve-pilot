@@ -18,6 +18,7 @@ const (
 type StepName string
 
 const (
+	// Provision steps
 	StepCloning     StepName = "cloning"
 	StepConfiguring StepName = "configuring"
 	StepResizing    StepName = "resizing"
@@ -25,9 +26,18 @@ const (
 	StepStarting    StepName = "starting"
 	StepWaitingRun  StepName = "waiting_for_running"
 	StepReady       StepName = "ready"
+
+	// Backup steps
+	StepBackingUp StepName = "backing_up"
+
+	// Restore steps
+	StepStopping  StepName = "stopping"
+	StepDeleting  StepName = "deleting"
+	StepRestoring StepName = "restoring"
 )
 
 var StepProgress = map[StepName]int{
+	// Provision
 	StepCloning:     10,
 	StepConfiguring: 30,
 	StepResizing:    45,
@@ -35,6 +45,14 @@ var StepProgress = map[StepName]int{
 	StepStarting:    70,
 	StepWaitingRun:  85,
 	StepReady:       100,
+
+	// Backup
+	StepBackingUp: 50,
+
+	// Restore
+	StepStopping:  15,
+	StepDeleting:  30,
+	StepRestoring: 60,
 }
 
 type Job struct {
@@ -103,4 +121,27 @@ type JobEvent struct {
 	Progress int       `json:"progress"`
 	Error    string    `json:"error,omitempty"`
 	IP       string    `json:"ip_address,omitempty"`
+}
+
+// BackupPayload is the NATS message for backup jobs.
+type BackupPayload struct {
+	JobID   string `json:"job_id"`
+	Type    string `json:"type"` // "vm" or "container"
+	Node    string `json:"node"`
+	VMID    int    `json:"vmid"`
+	Name    string `json:"name"`
+	Storage string `json:"storage"`
+	Notes   string `json:"notes,omitempty"`
+}
+
+// RestorePayload is the NATS message for restore jobs.
+type RestorePayload struct {
+	JobID   string `json:"job_id"`
+	Type    string `json:"type"` // "vm" or "container"
+	Node    string `json:"node"`
+	VMID    int    `json:"vmid"`
+	Name    string `json:"name"`
+	Archive string `json:"archive"`
+	Storage string `json:"storage"`
+	InPlace bool   `json:"in_place"`
 }

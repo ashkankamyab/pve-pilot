@@ -173,18 +173,11 @@ export default function VMDetailPage() {
               {/* Interfaces */}
               {(interfaces ?? []).filter((i) => i.name !== "lo").length > 0 && (
                 <div className="flex flex-col gap-2 mb-3">
-                  {(interfaces ?? []).filter((i) => i.name !== "lo").map((iface) => (
-                    <div key={iface.name} className="flex items-center gap-3 rounded-md bg-[#111111] px-3 py-2">
-                      <span className="font-mono text-xs text-[#555555]">{iface.name}</span>
-                      <span className="font-mono text-[10px] text-[#444444]">{iface["hardware-address"]}</span>
-                      <div className="flex-1" />
-                      {(iface["ip-addresses"] || [])
-                        .filter((a) => a["ip-address-type"] === "ipv4" && a["ip-address"] !== "127.0.0.1")
-                        .map((addr) => (
-                          <code key={addr["ip-address"]} className="font-mono text-xs text-[#00ff88]">{addr["ip-address"]}</code>
-                        ))}
-                    </div>
-                  ))}
+                  {(interfaces ?? []).filter((i) => i.name !== "lo").map((iface) => {
+                    const ipv4 = (iface["ip-addresses"] || [])
+                      .filter((a) => a["ip-address-type"] === "ipv4" && a["ip-address"] !== "127.0.0.1");
+                    return <InterfaceRow key={iface.name} name={iface.name} mac={iface["hardware-address"]} ips={ipv4.map((a) => a["ip-address"])} />;
+                  })}
                 </div>
               )}
 
@@ -373,6 +366,55 @@ function IOCard({ icon, label, value }: { icon: React.ReactNode; label: string; 
     <div className="rounded-md border border-[#1a1a1a] bg-[#131313] px-3 py-2.5">
       <div className="flex items-center gap-1.5 text-[10px] text-[#555555]">{icon} {label}</div>
       <div className="mt-1 font-mono text-xs text-[#e0e0e0]">{value}</div>
+    </div>
+  );
+}
+
+const IP_VISIBLE_LIMIT = 3;
+
+function InterfaceRow({ name, mac, ips }: { name: string; mac: string; ips: string[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const needsFold = ips.length > IP_VISIBLE_LIMIT;
+  const visible = needsFold && !expanded ? ips.slice(0, IP_VISIBLE_LIMIT) : ips;
+
+  return (
+    <div className="rounded-md bg-[#111111] px-3 py-2">
+      <div className="flex items-center gap-3">
+        <span className="font-mono text-xs text-[#555555]">{name}</span>
+        <span className="font-mono text-[10px] text-[#444444]">{mac}</span>
+        <div className="flex-1" />
+        {!needsFold && ips.map((ip) => (
+          <code key={ip} className="font-mono text-xs text-[#00ff88]">{ip}</code>
+        ))}
+        {needsFold && !expanded && (
+          <>
+            {visible.map((ip) => (
+              <code key={ip} className="font-mono text-xs text-[#00ff88]">{ip}</code>
+            ))}
+            <button
+              onClick={() => setExpanded(true)}
+              className="font-mono text-[10px] text-[#555555] hover:text-[#00ff88] transition-colors"
+            >
+              +{ips.length - IP_VISIBLE_LIMIT} more
+            </button>
+          </>
+        )}
+        {needsFold && expanded && (
+          <button
+            onClick={() => setExpanded(false)}
+            className="font-mono text-[10px] text-[#555555] hover:text-[#00ff88] transition-colors"
+          >
+            collapse
+          </button>
+        )}
+      </div>
+      {needsFold && expanded && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {ips.map((ip) => (
+            <code key={ip} className="font-mono text-xs text-[#00ff88]">{ip}</code>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

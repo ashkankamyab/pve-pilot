@@ -11,7 +11,11 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-const SubjectProvision = "jobs.provision"
+const (
+	SubjectProvision = "jobs.provision"
+	SubjectBackup    = "jobs.backup"
+	SubjectRestore   = "jobs.restore"
+)
 
 // Worker subscribes to NATS and executes provision jobs.
 type Worker struct {
@@ -45,6 +49,35 @@ func (w *Worker) Start() error {
 		return fmt.Errorf("subscribing to %s: %w", SubjectProvision, err)
 	}
 	log.Printf("worker: listening on %s", SubjectProvision)
+
+	_, err = w.nc.Subscribe(SubjectBackup, func(msg *nats.Msg) {
+		var payload BackupPayload
+		if err := json.Unmarshal(msg.Data, &payload); err != nil {
+			log.Printf("worker: invalid backup payload: %v", err)
+			return
+		}
+		log.Printf("worker: picked up backup job %s (type=%s, vmid=%d)", payload.JobID, payload.Type, payload.VMID)
+		w.backupJob(payload)
+	})
+	if err != nil {
+		return fmt.Errorf("subscribing to %s: %w", SubjectBackup, err)
+	}
+	log.Printf("worker: listening on %s", SubjectBackup)
+
+	_, err = w.nc.Subscribe(SubjectRestore, func(msg *nats.Msg) {
+		var payload RestorePayload
+		if err := json.Unmarshal(msg.Data, &payload); err != nil {
+			log.Printf("worker: invalid restore payload: %v", err)
+			return
+		}
+		log.Printf("worker: picked up restore job %s (type=%s, vmid=%d)", payload.JobID, payload.Type, payload.VMID)
+		w.restoreJob(payload)
+	})
+	if err != nil {
+		return fmt.Errorf("subscribing to %s: %w", SubjectRestore, err)
+	}
+	log.Printf("worker: listening on %s", SubjectRestore)
+
 	return nil
 }
 
@@ -407,6 +440,116 @@ func (w *Worker) waitForRunningAndIP(node string, vmid int, timeout time.Duratio
 		return true, ""
 	}
 	return false, ""
+}
+
+// backupJob executes a backup via Proxmox API and tracks progress.
+func (w *Worker) backupJob(p BackupPayload) {
+	id := p.JobID
+
+	w.store.UpdateStep(id, StepBackingUp, StatusRunning)
+	log.Printf("worker [%s]: starting backup of %s %d on %s", id, p.Type, p.VMID, p.Node)
+
+	upid, err := w.pve.Backup(p.Node, p.VMID, p.Storage, "snapshot", "zstd", p.Notes)
+	if err != nil {
+		w.store.SetError(id, fmt.Sprintf("backup failed: %v", err))
+		return
+	}
+
+	if err := w.pve.WaitForTask(p.Node, upid, 10*time.Minute); err != nil {
+		w.store.SetError(id, fmt.Sprintf("backup task failed: %v", err))
+		return
+	}
+
+	w.store.UpdateStep(id, StepReady, StatusCompleted)
+	log.Printf("worker [%s]: backup completed for %s %d", id, p.Type, p.VMID)
+}
+
+// restoreJob executes a restore via Proxmox API and tracks progress.
+func (w *Worker) restoreJob(p RestorePayload) {
+	id := p.JobID
+	var err error
+
+	// In-place: stop + delete existing first
+	if p.InPlace && p.VMID > 0 {
+		w.store.UpdateStep(id, StepStopping, StatusRunning)
+		log.Printf("worker [%s]: stopping %s %d for in-place restore", id, p.Type, p.VMID)
+
+		if p.Type == "container" {
+			status, _ := w.pve.GetContainerStatus(p.Node, p.VMID)
+			if status != nil && status.Status == "running" {
+				stopUpid, err := w.pve.StopContainer(p.Node, p.VMID)
+				if err == nil {
+					_ = w.pve.WaitForTask(p.Node, stopUpid, 60*time.Second)
+				}
+				for i := 0; i < 15; i++ {
+					s, _ := w.pve.GetContainerStatus(p.Node, p.VMID)
+					if s != nil && s.Status == "stopped" {
+						break
+					}
+					time.Sleep(2 * time.Second)
+				}
+			}
+		} else {
+			status, _ := w.pve.GetVMStatus(p.Node, p.VMID)
+			if status != nil && status.Status == "running" {
+				stopUpid, err := w.pve.StopVM(p.Node, p.VMID)
+				if err == nil {
+					_ = w.pve.WaitForTask(p.Node, stopUpid, 60*time.Second)
+				}
+				for i := 0; i < 15; i++ {
+					s, _ := w.pve.GetVMStatus(p.Node, p.VMID)
+					if s != nil && s.Status == "stopped" {
+						break
+					}
+					time.Sleep(2 * time.Second)
+				}
+			}
+		}
+
+		// Delete existing
+		w.store.UpdateStep(id, StepDeleting, StatusRunning)
+		log.Printf("worker [%s]: deleting %s %d for in-place restore", id, p.Type, p.VMID)
+
+		var delUpid string
+		if p.Type == "container" {
+			delUpid, err = w.pve.DeleteContainer(p.Node, p.VMID)
+		} else {
+			delUpid, err = w.pve.DeleteVM(p.Node, p.VMID)
+		}
+		if err != nil {
+			w.store.SetError(id, fmt.Sprintf("delete failed: %v", err))
+			return
+		}
+		if err := w.pve.WaitForTask(p.Node, delUpid, 60*time.Second); err != nil {
+			w.store.SetError(id, fmt.Sprintf("delete task failed: %v", err))
+			return
+		}
+		time.Sleep(3 * time.Second)
+	}
+
+	// Restore
+	w.store.UpdateStep(id, StepRestoring, StatusRunning)
+	storage := p.Storage
+	log.Printf("worker [%s]: restoring %s %d from %s", id, p.Type, p.VMID, p.Archive)
+
+	var upid string
+	if p.Type == "container" {
+		upid, err = w.pve.RestoreContainer(p.Node, p.Archive, p.VMID, storage)
+	} else {
+		upid, err = w.pve.RestoreVM(p.Node, p.Archive, p.VMID, storage)
+	}
+	if err != nil {
+		w.store.SetError(id, fmt.Sprintf("restore failed: %v", err))
+		return
+	}
+
+	if err := w.pve.WaitForTask(p.Node, upid, 10*time.Minute); err != nil {
+		w.store.SetError(id, fmt.Sprintf("restore task failed: %v", err))
+		return
+	}
+
+	w.store.UpdateStep(id, StepReady, StatusCompleted)
+	log.Printf("worker [%s]: restore completed for %s %d", id, p.Type, p.VMID)
 }
 
 // waitForRunningContainer polls until the container is running.

@@ -159,13 +159,15 @@ export interface FilesystemInfo {
   "used-bytes"?: number;
 }
 
-// Job types for async provision via NATS
+// Job types for async operations via NATS
 export type JobStatus = "pending" | "running" | "completed" | "failed";
-export type JobStep = "" | "cloning" | "configuring" | "resizing" | "starting" | "waiting_for_running" | "ready";
+export type JobStep = "" | "cloning" | "configuring" | "resizing" | "starting" | "waiting_for_running" | "ready"
+  | "backing_up" | "stopping" | "deleting" | "restoring";
+export type JobType = "vm" | "container" | "backup_vm" | "backup_container" | "restore_vm" | "restore_container";
 
 export interface Job {
   id: string;
-  type: "vm" | "container";
+  type: JobType;
   status: JobStatus;
   step: JobStep;
   progress: number;

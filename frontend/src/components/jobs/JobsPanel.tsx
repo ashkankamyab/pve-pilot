@@ -13,7 +13,17 @@ const STEP_LABELS: Record<string, string> = {
   starting: "Starting",
   waiting_for_running: "Waiting for running",
   ready: "Ready",
+  backing_up: "Backing up",
+  stopping: "Stopping",
+  deleting: "Deleting",
+  restoring: "Restoring",
 };
+
+function jobLabel(type: string): string {
+  if (type.startsWith("backup_")) return "Backup";
+  if (type.startsWith("restore_")) return "Restore";
+  return "Provision";
+}
 
 function JobRow({ job }: { job: Job }) {
   const statusIcon =
@@ -33,7 +43,7 @@ function JobRow({ job }: { job: Job }) {
           <span className="text-sm font-medium text-[#e0e0e0] truncate">
             {job.name}
           </span>
-          <span className="text-xs text-[#555555]">#{job.new_vmid}</span>
+          <span className="text-xs text-[#555555]">#{job.new_vmid} · {jobLabel(job.type)}</span>
         </div>
         <div className="text-xs text-[#888888]">
           {job.status === "failed"
@@ -102,7 +112,7 @@ export default function JobsPanel() {
         <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-lg border border-[#222222] bg-[#161616] shadow-2xl">
           <div className="flex items-center justify-between border-b border-[#222222] px-4 py-2.5">
             <span className="text-xs font-medium text-[#888888] uppercase tracking-wider">
-              Provision Jobs
+              Jobs
             </span>
             {hasCompleted && (
               <button
