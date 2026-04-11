@@ -21,11 +21,11 @@ const (
 type Worker struct {
 	nc      *nats.Conn
 	store   *Store
-	pve     *proxmox.Client
-	hostSSH *proxmox.HostSSH
+	pve     proxmox.API
+	hostSSH proxmox.HostExecutor
 }
 
-func NewWorker(nc *nats.Conn, store *Store, pve *proxmox.Client, hostSSH *proxmox.HostSSH) *Worker {
+func NewWorker(nc *nats.Conn, store *Store, pve proxmox.API, hostSSH proxmox.HostExecutor) *Worker {
 	return &Worker{nc: nc, store: store, pve: pve, hostSSH: hostSSH}
 }
 

@@ -46,6 +46,22 @@ backend-dev: ## Run backend locally (without Docker)
 frontend-dev: ## Run frontend locally (without Docker)
 	cd frontend && npm run dev
 
+.PHONY: test
+test: test-backend test-frontend ## Run all tests
+
+.PHONY: test-backend
+test-backend: ## Run Go backend tests
+	cd backend && go test ./... -count=1
+
+.PHONY: test-frontend
+test-frontend: ## Run frontend tests
+	cd frontend && npx vitest run
+
+.PHONY: test-verbose
+test-verbose: ## Run all tests with verbose output
+	cd backend && go test ./... -count=1 -v
+	cd frontend && npx vitest run
+
 .PHONY: backend-build
 backend-build: ## Build backend binary
 	cd backend && go build -o server .
